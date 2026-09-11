@@ -1,0 +1,347 @@
+{
+  "_meta": {
+    "title": "Python数据处理编程 学习路径",
+    "description": "Knowledge级学习路径，跨Theme组织，支持并列学习与多条件前置",
+    "node_count": 52,
+    "phase_count": 10
+  },
+  "phases": [
+    {
+      "id": 0,
+      "name": "Python语法入门",
+      "description": "编程基础语法规范，零基础起点",
+      "groups": [
+        {
+          "id": "0a",
+          "parallel_nodes": ["Python编程规范", "命名和保留字", "运算符和表达式"],
+          "label": "基本语法规则"
+        },
+        {
+          "id": "0b",
+          "parallel_nodes": ["Python内置对象", "Python内置函数"],
+          "label": "内置对象与函数",
+          "requires": ["0a"]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "程序控制结构",
+      "description": "程序执行流程控制，是编写逻辑代码的基础",
+      "groups": [
+        {
+          "id": "1a",
+          "parallel_nodes": ["顺序结构", "程序流程图"],
+          "label": "顺序执行与流程图思维"
+        },
+        {
+          "id": "1b",
+          "parallel_nodes": ["分支结构"],
+          "label": "分支选择",
+          "requires": ["0a", "0b"]
+        },
+        {
+          "id": "1c",
+          "parallel_nodes": ["循环结构"],
+          "label": "循环迭代",
+          "requires": ["1b"]
+        },
+        {
+          "id": "1d",
+          "parallel_nodes": ["异常处理"],
+          "label": "异常处理",
+          "requires": ["1c"]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "基本数据结构与字符串处理",
+      "description": "Python核心数据结构，可多个并列学习",
+      "groups": [
+        {
+          "id": "2a",
+          "parallel_nodes": ["列表", "字符串", "元组"],
+          "label": "列表/字符串/元组（可并列学习）",
+          "requires": ["1a", "1b"]
+        },
+        {
+          "id": "2b",
+          "parallel_nodes": ["字典", "集合"],
+          "label": "字典与集合",
+          "requires": ["2a"],
+          "note": "理解序列类型后更容易掌握映射类型"
+        },
+        {
+          "id": "2c",
+          "parallel_nodes": ["正则表达式"],
+          "label": "正则表达式",
+          "requires": ["2a"]
+        },
+        {
+          "id": "2d",
+          "parallel_nodes": ["文件"],
+          "label": "文件操作",
+          "requires": ["2a", "1d"]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "函数与代码复用",
+      "description": "函数式编程思想，模块化代码的基础",
+      "groups": [
+        {
+          "id": "3a",
+          "parallel_nodes": ["函数的定义"],
+          "label": "函数定义"
+        },
+        {
+          "id": "3b",
+          "parallel_nodes": ["函数的参数传递", "函数的调用"],
+          "label": "参数与调用",
+          "requires": ["3a"]
+        },
+        {
+          "id": "3c",
+          "parallel_nodes": ["函数的变量作用范围"],
+          "label": "作用域",
+          "requires": ["3b"]
+        },
+        {
+          "id": "3d",
+          "parallel_nodes": ["lambda表达式"],
+          "label": "匿名函数",
+          "requires": ["3b"]
+        }
+      ],
+      "requires_phase": [2]
+    },
+    {
+      "id": 4,
+      "name": "面向对象编程",
+      "description": "OOP编程范式，建立在函数基础上",
+      "groups": [
+        {
+          "id": "4a",
+          "parallel_nodes": ["面向对象的程序设计"],
+          "label": "OOP设计思想"
+        },
+        {
+          "id": "4b",
+          "parallel_nodes": ["类的定义"],
+          "label": "类定义与实例化",
+          "requires": ["4a", "3a"]
+        },
+        {
+          "id": "4c",
+          "parallel_nodes": ["成员变量", "成员方法"],
+          "label": "成员变量与方法（可并列）",
+          "requires": ["4b"]
+        },
+        {
+          "id": "4d",
+          "parallel_nodes": ["继承和多态"],
+          "label": "继承与多态",
+          "requires": ["4c"]
+        },
+        {
+          "id": "4e",
+          "parallel_nodes": ["函数进阶"],
+          "label": "函数进阶（装饰器、生成器等）",
+          "requires": ["4c", "3d"],
+          "note": "结合OOP与函数式的高级特性"
+        }
+      ],
+      "requires_phase": [3]
+    },
+    {
+      "id": 5,
+      "name": "NumPy科学计算",
+      "description": "数值计算基础库，进入数据科学领域的起点",
+      "groups": [
+        {
+          "id": "5a",
+          "parallel_nodes": ["NumPy库_简介", "NumPy-数组的基本操作"],
+          "label": "NumPy入门与ndarray"
+        },
+        {
+          "id": "5b",
+          "parallel_nodes": ["基于数组的运算和函数", "NumPy的常用概念"],
+          "label": "数组运算与广播机制",
+          "requires": ["5a"]
+        },
+        {
+          "id": "5c",
+          "parallel_nodes": ["基于数组的文件读写"],
+          "label": "数组文件IO",
+          "requires": ["5b", "2d"]
+        },
+        {
+          "id": "5d",
+          "parallel_nodes": ["线性代数"],
+          "label": "线性代数运算",
+          "requires": ["5b"]
+        }
+      ],
+      "requires_phase": [2]
+    },
+    {
+      "id": 6,
+      "name": "Pandas数据分析",
+      "description": "核心数据分析库，以NumPy为基础",
+      "groups": [
+        {
+          "id": "6a",
+          "parallel_nodes": ["Pandas的简介和安装", "Pandas数据结构"],
+          "label": "Pandas入门（Series与DataFrame）"
+        },
+        {
+          "id": "6b",
+          "parallel_nodes": ["Pandas的基本功能", "运算和函数"],
+          "label": "基本操作与运算",
+          "requires": ["6a"]
+        },
+        {
+          "id": "6c",
+          "parallel_nodes": ["Pandas-数据统计"],
+          "label": "描述性统计",
+          "requires": ["6b"]
+        },
+        {
+          "id": "6d",
+          "parallel_nodes": ["Pandas-数据读写"],
+          "label": "多种数据格式读写",
+          "requires": ["6b", "5c"],
+          "note": "读写CSV/JSON/Excel/数据库等"
+        }
+      ],
+      "requires_phase": [5]
+    },
+    {
+      "id": 7,
+      "name": "Pandas进阶：数据清洗与聚合",
+      "description": "真实数据处理的核心技能",
+      "groups": [
+        {
+          "id": "7a",
+          "parallel_nodes": ["数据准备", "数据转换"],
+          "label": "数据准备与转换（可并列）",
+          "requires": ["6b"]
+        },
+        {
+          "id": "7b",
+          "parallel_nodes": ["层次化索引"],
+          "label": "层次化索引",
+          "requires": ["7a"]
+        },
+        {
+          "id": "7c",
+          "parallel_nodes": ["数据聚合"],
+          "label": "分组聚合与透视表",
+          "requires": ["7b"]
+        }
+      ],
+      "requires_phase": [6]
+    },
+    {
+      "id": 8,
+      "name": "Matplotlib数据可视化",
+      "description": "将数据分析结果可视化呈现",
+      "groups": [
+        {
+          "id": "8a",
+          "parallel_nodes": ["Matplotlib简介", "基本绘图"],
+          "label": "Matplotlib入门与基本绘图"
+        },
+        {
+          "id": "8b",
+          "parallel_nodes": ["绘图函数"],
+          "label": "各类图形绘制（线型图/柱状图/散点图等）",
+          "requires": ["8a"]
+        }
+      ],
+      "requires_phase": [6]
+    },
+    {
+      "id": 9,
+      "name": "时间序列分析",
+      "description": "高阶数据分析——时间维度数据处理",
+      "groups": [
+        {
+          "id": "9a",
+          "parallel_nodes": ["日期和时间数据类型及工具", "时间序列基础"],
+          "label": "时间数据类型与序列基础"
+        },
+        {
+          "id": "9b",
+          "parallel_nodes": ["日期处理"],
+          "label": "日期偏移、频率与移动",
+          "requires": ["9a"]
+        },
+        {
+          "id": "9c",
+          "parallel_nodes": ["时期及其算术运算"],
+          "label": "时期运算",
+          "requires": ["9b"]
+        },
+        {
+          "id": "9d",
+          "parallel_nodes": ["重采样及频率转换"],
+          "label": "重采样",
+          "requires": ["9c"]
+        },
+        {
+          "id": "9e",
+          "parallel_nodes": ["滑动窗口函数"],
+          "label": "滑动窗口与指数加权",
+          "requires": ["9d"]
+        }
+      ],
+      "requires_phase": [6, 7]
+    }
+  ],
+  "checkpoints": {
+    "Python基本数据结构_测试节": {
+      "after_phase": 2,
+      "type": "assessment",
+      "description": "数据结构阶段测试"
+    },
+    "程序控制结构_其他_节": {
+      "after_phase": 1,
+      "type": "assessment",
+      "description": "控制结构阶段测试"
+    },
+    "类_其他_节": {
+      "after_phase": 4,
+      "type": "assessment",
+      "description": "OOP阶段测试"
+    },
+    "文件字符串_编程题": {
+      "after_phase": 3,
+      "type": "practice",
+      "description": "文件与字符串综合编程练习"
+    },
+    "NumPy库_作业题": {
+      "after_phase": 5,
+      "type": "homework",
+      "description": "NumPy阶段作业（含填空+编程）"
+    },
+    "Pandas_作业题": {
+      "after_phase": 6,
+      "type": "homework",
+      "description": "Pandas阶段作业（编程题）"
+    },
+    "matplotlib_填空题": {
+      "after_phase": 8,
+      "type": "homework",
+      "description": "Matplotlib阶段作业"
+    }
+  },
+  "notes": [
+    "「其它数据结构」节点内容为空，可在 Phase 2 末尾作为扩展了解",
+    "「函数库」节点（扩展库）可在 Phase 3 末尾了解，作为pip安装第三方库的入门",
+    "「程序流程图」与「顺序结构」并列，属于计算思维培养",
+    "每个Phase完成后建议完成对应的checkpoint（测试/作业）再进入下一Phase"
+  ]
+}

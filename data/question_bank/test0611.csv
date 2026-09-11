@@ -1,0 +1,398 @@
+Difficulty,Mastery,test_right_num,WrongTimes,ExamTimes,title,analysis,HomeworkTimes,Importance,Answer,uid,Type,test_num,Content,Teached,relate_point_title
+1,0,0,0,0,随堂小测2026061101,"知识点：数据的组装（concat）
+解析： pd.concat([s1, s2], axis=0) 沿行轴拼接，得到 Series：a:1, b:2, c:3, d:4，总和为10。",0,1,B,2026061101,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+s1 = pd.Series([1, 2], index=['a', 'b'])
+s2 = pd.Series([3, 4], index=['c', 'd'])
+res = pd.concat([s1, s2], axis=0).sum()
+print(res)
+A. 6
+B. 10
+C. 7
+D. 5",1,数据的组装
+1,0,0,0,0,随堂小测2026061102,"本题考查知识点： 数据的变形（stack/unstack）
+解析：stack后顺序：('x','A'):1, ('x','B'):3, ('y','A'):2, ('y','B'):4。iloc[2]对应('y','A')值为2。",0,1,B,2026061102,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'A': [1, 2], 'B': [3, 4]}, index=['x', 'y'])
+res = df.stack().iloc[2]
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,数据的变形
+1,0,0,0,0,随堂小测2026061103,"本题考查知识点： 移除重复数据。
+解析： drop_duplicates() 默认保留第一次出现的行，删除完全重复的行。数据：行0(1,5)，行1(1,5)重复删除，行2(2,6)，行3(2,7)，行4(1,5)与行0重复删除。剩余3行。",0,1,B,2026061103,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'a': [1, 1, 2, 2, 1], 'b': [5, 5, 6, 7, 5]})
+res = df.drop_duplicates().shape[0]
+print(res)
+A. 2
+B. 3
+C. 4
+D. 5",1,移除重复数据
+1,0,0,0,0,随堂小测2026061104,"本题考查知识点： 使用函数和映射。
+解析： map 将每个水果映射为'fruit'，得到 Series(['fruit','fruit','fruit'])，唯一值个数为1。",0,1,B,2026061104,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+s = pd.Series(['apple', 'banana', 'cherry'])
+mapping = {'apple': 'fruit', 'banana': 'fruit', 'cherry': 'fruit'}
+res = s.map(mapping).nunique()
+print(res)
+A. 1
+B. 2
+C. 3
+D. 0",1,使用函数和映射
+1,0,0,0,0,随堂小测2026061105,"本题考查知识点：数据转换—替换值。
+解析： 将-999替换为0后，序列为[1,0,2,0,3]，平均值=(1+0+2+0+3)/5=6/5=1.2。。",0,1,B,2026061105,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+s = pd.Series([1, -999, 2, -999, 3])
+res = s.replace(-999, 0).mean()
+print(res)
+A. 1.0
+B. 1.2
+C. 1.5
+D. 2.0",1,数据转换—替换值
+1,0,0,0,0,随堂小测2026061106,"本题考查知识点：重命名索引（rename）。
+解析： 行索引'A'改为'X'，列名'b'改为'Y'，原df中'A'行'b'列值为3，故结果为3。",0,1,C,2026061106,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'a': [1, 2], 'b': [3, 4]}, index=['A', 'B'])
+res = df.rename(index={'A': 'X'}, columns={'b': 'Y'}).loc['X', 'Y']
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,重命名索引
+1,0,0,0,0,随堂小测2026061107,"本题考查知识点： 矢量化字符串（str.contains）。
+解析： str.contains('@') 返回布尔Series，'abc@123'和'ghi@789'包含'@'，共2个。",0,1,B,2026061107,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+s = pd.Series(['abc@123', 'def456', 'ghi@789', 'jkl'])
+res = s[s.str.contains('@')].count()
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,矢量化字符串
+1,0,0,0,0,随堂小测2026061108,"本题考查知识点： 离散化和面元（cut）。
+解析： cut分组：(0,18]→child, (18,25]→youth, (25,40]→adult。ages中15在(0,18]→child，20、25在(18,25]→youth（2个），30、35在(25,40]→adult（2个）。youth计数为2。",0,1,B,2026061108,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+ages = [10, 15, 20, 25, 30, 35]
+bins = [0, 18, 25, 40]
+cats = pd.cut(ages, bins, labels=['child', 'youth', 'adult'])
+res = cats.value_counts().loc['youth']
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,离散化和面元
+1,0,0,0,0,随堂小测2026061109,"本题考查知识点：检测和异常值过滤。
+解析： np.abs(df) > 50 判断每个元素是否绝对值大于50，第2行（索引2）A=100、B=200均大于50，且any(axis=1) 按行判断存在大于50的行，选出索引2这一行，shape[0]=1。",0,1,A,2026061109,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+import numpy as np
+df = pd.DataFrame({'A': [1, 2, 100, 3, 4], 'B': [5, 6, 200, 7, 8]})
+res = df[(np.abs(df) > 50).any(axis=1)].shape[0]
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,检测和异常值过滤
+1,0,0,0,0,随堂小测2026061110,"本题考查知识点：随机重排序。
+解析： sample(frac=1, random_state=42) 随机打乱所有行，固定随机种子42保证可复现。打乱后的第一行第二列（索引0，列'y'）值为8。",0,1,D,2026061110,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+import numpy as np
+np.random.seed(42)
+df = pd.DataFrame({'x': [1, 2, 3, 4], 'y': [5, 6, 7, 8]})
+res = df.sample(frac=1, random_state=42).iloc[0, 1]
+print(res)
+A. 5
+B. 6
+C. 7
+D. 8",1,随机重排序
+1,0,0,0,0,随堂小测2026061111,"本题考查知识点： 哑变量/指标矩阵。
+解析： get_dummies 将每个类别转为0/1列，生成3列（red,blue,green），共4行，每行一个1，总元素和等于行数4。",0,1,B,2026061111,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+s = pd.Series(['red', 'blue', 'red', 'green'])
+dummies = pd.get_dummies(s, prefix='color')
+res = dummies.sum().sum()
+print(res)
+A. 3
+B. 4
+C. 6
+D. 12",1,哑变量/指标矩阵
+1,0,0,0,0,随堂小测2026061112,"本题考查知识点： 根据分级汇总（level参数）。
+解析： 多层次索引，按'outer'级别分组求和。B组包含索引('B',1)值3和('B',2)值4，和为7。",0,1,C,2026061112,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'value': [1, 2, 3, 4, 5, 6]}, index=pd.MultiIndex.from_tuples([('A',1),('A',2),('B',1),('B',2),('C',1),('C',2)], names=['outer','inner']))
+res = df.groupby(level='outer').sum().loc['B', 'value']
+print(res)
+A. 4
+B. 5
+C. 7
+D. 8",1,根据分级汇总
+1,0,0,0,0,随堂小测2026061113,"本题考查知识点： Series的层次化索引。
+解析： s['b'][1]：先取第一级索引'b'得到子Series，再取第二级索引1，值为30。s.iloc[0] 第一个元素（a,1）值为10。30+10=40。",0,1,B,2026061113,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series(['apple', 'banana'], index=[0, 2])
+res = s.reindex(range(3), method='ffill')
+print(res[1])
+
+A. apple
+B. banana
+C. NaN
+D. 0",1,"Series的层次化索引
+"
+1,0,0,0,0,随堂小测2026061114,"本题考查知识点： DataFrame的层次化索引。
+解析： df.loc['b'] 选出第一级索引为b的所有行（索引('b',1)和('b',2)），再取'Y'列，得到Series：('b',1):7，('b',2):10。iloc[0] 取第一个元素7。",0,1,B,2026061114,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame(np.arange(12).reshape(4,3),
+                  index=[['a','a','b','b'],[1,2,1,2]],
+                  columns=['X','Y','Z'])
+res = df.loc['b', 'Y'].iloc[0]
+print(res)
+A. 6
+B. 7
+C. 8
+D. 9",1,DataFrame的层次化索引
+1,0,0,0,0,随堂小测2026061115,"本题考查知识点： 重排分级和顺序（swaplevel）。
+解析： swaplevel('L1','L2') 交换两个索引级别，新索引变为：('1','A'), ('2','A'), ('1','B'), ('2','B')。第2个位置（索引2）是('1','B')，其第一个元素（第0个元素）为1。",0,1,A,2026061115,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'v': [1,2,3,4]},
+                  index=pd.MultiIndex.from_tuples([('A',1),('A',2),('B',1),('B',2)],
+                                                  names=['L1','L2']))
+res = df.swaplevel('L1','L2').index[2][0]
+print(res)
+A. 1
+B. 2
+C. A
+D. B",1,重排分级和顺序
+1,0,0,0,0,随堂小测2026061116,"本题考查知识点：DataFrame的列作为索引（set_index/reset_index）。
+解析： set_index('id') 将id列作为索引，reset_index() 将索引还原为默认整数索引并恢复id为列。原df中第1行（索引1）score为90，恢复后仍然为90。",0,1,B,2026061116,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'id': [101,102,103], 'score': [85,90,95]})
+res = df.set_index('id').reset_index().loc[1, 'score']
+print(res)
+A. 85
+B. 90
+C. 95
+D. 错误",1,DataFrame的列作为索引
+1,0,0,0,0,随堂小测2026061117,"本题考查知识点： 分组聚合（groupby基础）。
+解析： B组有两个成绩70和85，平均值77.5。",0,1,B,2026061117,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'class': ['A','A','B','B'], 'score': [80,90,70,85]})
+res = df.groupby('class')['score'].mean().loc['B']
+print(res)
+A. 70.0
+B. 77.5
+C. 85.0
+D. 80.0",1,分组聚合
+1,0,0,0,0,随堂小测2026061118,"本题考查知识点：迭代Groupby
+解析： 迭代groupby，x组val和=1+2=3，y组val和=3+4=7，累加得10。",0,1,C,2026061118,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'cat': ['x','x','y','y'], 'val': [1,2,3,4]})
+res = 0
+for name, group in df.groupby('cat'):
+    res += group['val'].sum()
+print(res)
+A. 5
+B. 7
+C. 10
+D. 14",1,迭代Groupby
+1,0,0,0,0,随堂小测2026061119,"本题考查知识点： 根据字典或Series进行分组
+解析： 按列分组，g1列为A+B，结果DataFrame索引0,1,2对应行，列0为g1。iloc[1,0]取第2行第1列，值为2+5=7。",0,1,C,2026061119,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'A': [1,2,3], 'B': [4,5,6], 'C': [7,8,9]})
+mapping = {'A':'g1', 'B':'g1', 'C':'g2'}
+res = df.groupby(mapping, axis=1).sum().iloc[1, 0]
+print(res)
+A. 5
+B. 6
+C. 7
+D. 9",1,根据字典或Series进行分组
+1,0,0,0,0,随堂小测2026061120,"本题考查知识点：根据函数进行分组。
+解析： 分组函数根据name首字母分组，'Tom'和'Tyke'首字母'T'，共2个。",0,1,B,2026061120,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'name': ['Tom','Jerry','Spike','Tyke'], 'score': [85,92,78,88]})
+def first_char(x):
+    return df.loc[x, 'name'][0]
+res = df.groupby(first_char).size().loc['T']
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,根据函数进行分组
+1,0,0,0,0,随堂小测2026061121,"本题考查知识点：根据索引进行分组（level）。
+解析： 按索引级别'num'分组，num=2的组包含('X',2)值2和('Y',2)值4，均值3.0。",0,1,C,2026061121,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'value': [1,2,3,4]},
+                  index=pd.MultiIndex.from_tuples([('X',1),('X',2),('Y',1),('Y',2)],
+                                                  names=['letter','num']))
+res = df.groupby(level='num').mean().loc[2, 'value']
+print(res)
+A. 2.0
+B. 2.5
+C. 3.0
+D. 4.0",1,根据索引进行分组
+1,0,0,0,0,随堂小测2026061122,"本题考查知识点： 数据的聚合（agg）。
+解析： b组val值为8和10，最大值为10。",0,1,C,2026061122,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'group': ['a','a','b','b'], 'val': [4,6,8,10]})
+res = df.groupby('group')['val'].agg(['min', 'max']).loc['b', 'max']
+print(res)
+A. 8
+B. 9
+C. 10
+D. 6",1,数据的聚合
+1,0,0,0,0,随堂小测2026061123,"本题考查知识点： 分位数和桶分析（qcut）。
+解析： qcut将6个数平均分为3组（每组2个）：[10,20]为低，[30,40]为中，[50,60]为高，'中'的个数为2。",0,1,B,2026061123,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+import numpy as np
+data = [10, 20, 30, 40, 50, 60]
+cats = pd.qcut(data, 3, labels=['低','中','高'])
+res = (cats == '中').sum()
+print(res)
+A. 1
+B. 2
+C. 3
+D. 4",1,分位数和桶分析
+1,0,0,0,0,随堂小测2026061124,"本题考查知识点： 应用apply（通用函数）。
+解析： apply(range_diff, axis=0) 对每列计算max-min。列a：4-1=3，列b：8-5=3，和为6？不对，3+3=6。",0,1,B,2026061124,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'a': [1,2,3,4], 'b': [5,6,7,8]})
+def range_diff(x):
+    return x.max() - x.min()
+res = df.apply(range_diff).sum()
+print(res)
+A. 4
+B. 6
+C. 8
+D. 10",1,应用apply（通用函数）
+1,0,0,0,0,随堂小测2026061125,"本题考查知识点： 透视表（pivot_table）。
+解析： 透视表，行城市，列年份，值销售总和。BJ在2021年销售为200。",0,1,C,2026061125,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'city': ['BJ','SH','BJ','SH'], 'year': [2020,2020,2021,2021], 'sales': [100,150,200,250]})
+res = pd.pivot_table(df, values='sales', index='city', columns='year', aggfunc='sum').loc['BJ', 2021]
+print(res)
+A. 100
+B. 150
+C. 200
+D. 250",1,透视表
+1,0,0,0,0,随堂小测2026061126,"本题考查知识点：交叉表（crosstab）。
+解析： 交叉表统计频次。男性(M)共3人，其中左撇子(L)2人（第2行和第4行？实际第0行M-R，第2行M-L，第4行M-L），所以M-L为2。",0,1,B,2026061126,1,0,"执行以下代码，输出结果是（）
+
+python
+import pandas as pd
+df = pd.DataFrame({'gender': ['M','F','M','F','M'], 'hand': ['R','R','L','R','L']})
+res = pd.crosstab(df['gender'], df['hand']).loc['M', 'L']
+print(res)
+A. 1
+B. 2
+C. 3
+D. 0",1,交叉表
+1,0,0,0,0,随堂小测2026061127,"本题考查知识点： 图形属性。
+解析： 'r--' 是颜色和线型的简写，r 表示红色（red），-- 表示虚线（dashed line）。因此绘制的是红色虚线。",0,1,B,2026061127,1,0,"import matplotlib.pyplot as plt
+import numpy as np
+x = np.arange(0, 10, 1)
+y = x ** 2
+plt.plot(x, y, 'r--')
+plt.show()
+关于绘制的图形，下列说法正确的是（）
+A. 红色实线
+B. 红色虚线
+C. 蓝色虚线
+D. 蓝色实线",1,图形属性
+1,0,0,0,0,随堂小测2026061128,"本题考查知识点： 图形属性。
+解析： 'ko--' 中 k 表示黑色（black），o 表示圆形标记（circle marker），-- 表示虚线。因此是黑色虚线加圆形标记。",0,1,B,2026061128,1,0,"import matplotlib.pyplot as plt
+import numpy as np
+plt.plot([1, 2, 3, 4], [1, 4, 9, 16], 'ko--')
+plt.show()
+关于绘制的图形，下列说法正确的是（）
+A. 黑色实线，无标记
+B. 黑色虚线，圆形标记
+C. 黑色虚线，方形标记
+D. 黑色点线，圆形标记",1,图形属性
+1,0,0,0,0,随堂小测2026061129,"本题考查知识点： 柱状图——stacked与barh。
+解析： barh 绘制水平柱状图，stacked=True 表示堆叠。行索引 'x','y' 作为y轴类别，列 'A','B' 堆叠显示。",0,1,B,2026061129,1,0,"import matplotlib.pyplot as plt
+import pandas as pd
+df = pd.DataFrame({'A': [1, 2], 'B': [3, 4]}, index=['x', 'y'])
+df.plot.barh(stacked=True)
+plt.show()
+关于绘制的图形，下列说法正确的是（）
+A. 垂直堆叠柱状图，x轴为'A','B'
+B. 水平堆叠柱状图，y轴为'x','y'
+C. 水平分组柱状图
+D. 垂直分组柱状图",1,柱状图
+1,0,0,0,0,随堂小测2026061130,"本题考查知识点： 饼图——explode参数。
+解析： explode 参数指定每个扇形离心的距离，非零值表示该扇形被分离。这里 explode = (0, 0.1, 0, 0)，只有第二个扇形（对应标签'B'）分离0.1。",0,1,B,2026061130,1,0,"import matplotlib.pyplot as plt
+labels = ['A', 'B', 'C', 'D']
+sizes = [15, 30, 45, 10]
+explode = (0, 0.1, 0, 0)
+plt.pie(sizes, explode=explode, labels=labels, autopct='%1.1f%%')
+plt.show()
+关于绘制的饼图，下列说法正确的是（）
+A. 所有扇形都不分离
+B. 仅B扇形分离
+C. 仅C扇形分离
+D. A和C扇形分离",1,饼图
+1,0,0,0,0,随堂小测2026061131,"本题考查知识点： 三维图形——scatter。
+解析： ax.scatter 绘制三维散点图，参数 c='r' 设置颜色为红色，marker='^' 设置标记为三角（上三角形）。",0,1,C,2026061131,1,0,"import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import numpy as np
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+x = np.random.rand(10)
+y = np.random.rand(10)
+z = np.random.rand(10)
+ax.scatter(x, y, z, c='r', marker='^')
+plt.show()
+关于绘制的图形，下列说法正确的是（）
+A. 三维线型图
+B. 三维曲面图
+C. 三维散点图，红色三角标记
+D. 三维散点图，红色圆形标记",1,三维图形

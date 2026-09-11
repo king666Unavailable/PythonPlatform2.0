@@ -1,0 +1,125 @@
+Difficulty,Mastery,test_right_num,WrongTimes,ExamTimes,title,analysis,HomeworkTimes,Importance,Answer,uid,Type,test_num,Content,Teached,relate_point_title
+1,0,0,0,0,随堂小测2026042701,略,0,1,A,2026042701,1,0,"执行以下代码，输出结果是（）
+lst1 = [1,2,3]
+lst2 = lst1
+lst2.extend([4,5])
+lst1.pop(1)
+print(lst1)
+A. [1,3,4,5]    B. [1,2,3,4,5]    C. [2,3,4,5]    D. [1,2,4,5]""",1,列表元素的增加
+1,0,0,0,0,随堂小测2026042702,略,0,1,B,2026042702,1,0,"执行以下代码，输出结果是（）
+score = {""语文"": 82, ""数学"": 90}
+a = score.get(""数学"", 60)
+b = score.get(""英语"", 60)
+print(a, b)
+A. 60 60         B. 90 60       C. 90 None        D. 报错",1,字典元素的读取
+1,0,0,0,0,随堂小测2026042703,略,0,1,A,2026042703,1,0,"执行test()的输出结果是（）
+ 
+def d1(func):
+    def wrapper():
+        print(""Python"")
+        func()
+    return wrapper
+def d2(func):
+    def wrapper():
+        print(""C++"")
+        func()
+    return wrapper
+@d1
+@d2
+def test():
+    print(""Java"")
+ 
+A. Python C++ Java    B. C++ Python Java   C. Java Python C++    D. Python Java C++",1,修饰器
+1,0,0,0,0,随堂小测2026042704,略,0,1,B,2026042704,1,0,"已知正则表达式为^[a-zA-Z_]\w*$，下列字符串能被该正则完全匹配的是（）
+A. 123_test    B. python_2026    C. @test_case     D. python-2026",1,正则表达式的定义
+1,0,0,0,0,随堂小测2026042705,略,0,1,7,2026042705,2,0,"执行以下代码，f(5)输出结果是______
+def f(x):
+    if x < 3:
+        return x
+    return f(x-1) + 2*f(x-2) – 3*f(x-3)",1,递归调用
+1,0,0,0,0,随堂小测2026042706,略,0,1,"[10, [20, 3], 4]",2026042706,2,0,"执行以下代码后，变量a的结果是______
+a = [1, [2, 3], 4]
+b = a
+c = a[::]
+b[0] = 10
+c[1][0] = 20",1,数组的切片
+1,0,0,0,0,随堂小测2026042707,略,0,1,"{1, 2, 5, 6, 8}",2026042707,2,0,"执行以下代码后，变量res的结果是______
+s1 = {1, 2, 2, 3, 4, 5}
+s2 = {3, 4, 5, 6, 7}
+s3 = {5, 6, 8}
+res = (s1 - s2) ^ s3",1,集合操作
+1,0,0,0,0,随堂小测2026042708,略,0,1,False,2026042708,2,0,"执行以下代码后，变量chk的结果是______
+s = ""Hello World""
+left, _, right = s.rpartition("" "")
+swap = s.swapcase()
+just = right.ljust(3, ""-"")
+chk = just.isspace()",1,字符串常用方法
+1,0,0,0,0,随堂小测2026042709,"
+（1）	sort(reverse=True) 或者 sort(reverse=1)
+（2）	1
+（3）	i for i in lst if i >= target 或者 list(filter(lambda x: x>=target, lst))
+（4）	sum(new_lst)
+（5）	round(total / len(new_lst), 1) 或者 float(f""{total/len(new_lst):.1f}"")",0,1,略,2026042709,4,0,"请补充相应的代码，实现注释部分的功能。
+def handle_list(lst):
+    # 对列表进行降序排序
+    lst.______
+    # 取出第2个元素作为目标值
+    target = lst[______]
+    # 筛选出大于等于目标值的元素，生成新列表
+    new_lst = [______]
+    # 计算新列表的元素总和
+    total = ______
+    # 计算平均值，保留1位小数
+    average = ______
+    return average",1,列表的常用方法
+1,0,0,0,0,随堂小测2026042710,"# 1. 定义 Student 类
+class Student:
+    def __init__(self, name, age):
+        # 得分点1-3：私有属性初始化：姓名、年龄由参数传入，成绩默认0
+        self.__name = name
+        self.__age = age
+        self.__score = 0  # 成绩初始值固定为0
+
+    def set_score(self, score):
+        # 得分点4：成绩合法性校验：仅0-100之间的成绩允许修改
+        if 0 <= score <= 100:
+            self.__score = score
+
+    def get_info(self):
+        # 得分点5：返回题目要求格式的字符串
+        return f""姓名：{self.__name}，年龄：{self.__age}，成绩：{self.__score}""
+
+    # 补充：为计算平均分提供成绩获取方法（符合封装原则，题目未禁止）
+    def get_score(self):
+        return self.__score
+
+
+# 2. 定义 manage_students 函数
+def manage_students(student_list):
+    # 得分点1：遍历所有学生，打印信息
+    for student in student_list:
+        print(student.get_info())
+
+    # 得分点2：处理空列表的特殊情况（返回0.0）
+    if not student_list:
+        return 0.0
+
+    # 得分点3：计算所有学生的总成绩和平均分
+    total_score = 0
+    student_count = len(student_list)
+    for student in student_list:
+        #得分点4：获取分数。还可以用student._Student__score
+        total_score += student.get_score()
+    
+    #得分点5： 保留1位小数
+    average_score = round(total_score / student_count, 1)
+    return average_score",0,1,略,2026042710,4,0,"编写类与函数，完成学生信息管理功能。
+(1)定义Student类，包含以下内容：
+私有属性：__name（姓名）、__age（年龄）、__score（成绩，初始值0）
+构造方法__init__：接收姓名、年龄，初始化私有属性
+公有方法set_score：修改私有成绩属性（要求成绩在0-100之间，否则不修改）
+公有方法get_info：返回字符串“姓名：XXX，年龄：XXX，成绩：XXX”
+(2)定义函数manage_students，实现以下功能：
+参数student_list是一个Student对象列表；
+遍历所有学生，依次打印每个学生的信息；
+计算所有学生的平均成绩（保留1位小数）并返回。",1,私有成员与公有成员

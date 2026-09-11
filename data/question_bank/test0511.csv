@@ -1,0 +1,482 @@
+Difficulty,Mastery,test_right_num,WrongTimes,ExamTimes,title,analysis,HomeworkTimes,Importance,Answer,uid,Type,test_num,Content,Teached,relate_point_title
+1,0,0,0,0,随堂小测2026051101,"本题考查知识点： Series 的标签索引与位置索引。
+解析： obj['a'] 通过标签访问，值为 -5；obj[1] 通过位置访问（'b' 对应位置 1），值为 7。-5 + 7 = 2 。",0,1,B,2026051101,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+obj = pd.Series([4, 7, -5, 3], index=['d', 'b', 'a', 'c'])
+res = obj['a'] + obj[1]
+print(res)
+
+A. -1
+B. 2
+C. 11
+D. -5",1,Series
+1,0,0,0,0,随堂小测2026051101,"本题考查知识点： Series 的标签索引与位置索引。
+解析： obj['a'] 通过标签访问，值为 -5；obj[1] 通过位置访问（'b' 对应位置 1），值为 7。-5 + 7 = 2 。",0,1,B,2026051101,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+obj = pd.Series([4, 7, -5, 3], index=['d', 'b', 'a', 'c'])
+res = obj['a'] + obj[1]
+print(res)
+
+A. -1
+B. 2
+C. 11
+D. -5",1,选取和过滤功能
+1,0,0,0,0,随堂小测2026051102,"本题考查知识点： 字典创建 Series 时的索引对齐。
+解析： 当指定的索引在字典键中不存在时，Pandas 会自动填充缺失值 NaN 。",0,1,B,2026051102,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+import numpy as np
+data = {'a': 100, 'b': 200, 'c': 300}
+obj = pd.Series(data, index=['b', 'c', 'd'])
+print(obj['d'])
+
+A. 0.0
+B. NaN
+C. 100.0
+D. 程序报错",1,Series
+1,0,0,0,0,随堂小测2026051102,"本题考查知识点： 字典创建 Series 时的索引对齐。
+解析： 当指定的索引在字典键中不存在时，Pandas 会自动填充缺失值 NaN 。",0,1,B,2026051102,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+import numpy as np
+data = {'a': 100, 'b': 200, 'c': 300}
+obj = pd.Series(data, index=['b', 'c', 'd'])
+print(obj['d'])
+
+A. 0.0
+B. NaN
+C. 100.0
+D. 程序报错",1,缺失数据
+1,0,0,0,0,随堂小测2026051102,"本题考查知识点： 字典创建 Series 时的索引对齐。
+解析： 当指定的索引在字典键中不存在时，Pandas 会自动填充缺失值 NaN 。",0,1,B,2026051102,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+import numpy as np
+data = {'a': 100, 'b': 200, 'c': 300}
+obj = pd.Series(data, index=['b', 'c', 'd'])
+print(obj['d'])
+
+A. 0.0
+B. NaN
+C. 100.0
+D. 程序报错",1,算术运算和数据对齐
+1,0,0,0,0,随堂小测2026051103,"本题考查知识点： DataFrame 的 iloc 行号索引。
+解析： df.iloc[0] 选取第一行（标签为 r1 的行），随后通过列名 ['B'] 访问该行对应的元素，即 3 。",0,1,C,2026051103,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame({'A': [1, 2], 'B': [3, 4]}, index=['r1', 'r2'])
+res = df.iloc[0]['B']
+print(res)
+
+A. 1
+B. 2
+C. 3
+D. 4",1,DataFrame
+1,0,0,0,0,随堂小测2026051103,"本题考查知识点： DataFrame 的 iloc 行号索引。
+解析： df.iloc[0] 选取第一行（标签为 r1 的行），随后通过列名 ['B'] 访问该行对应的元素，即 3 。",0,1,C,2026051103,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame({'A': [1, 2], 'B': [3, 4]}, index=['r1', 'r2'])
+res = df.iloc[0]['B']
+print(res)
+
+A. 1
+B. 2
+C. 3
+D. 4",1,选取和过滤功能
+1,0,0,0,0,随堂小测2026051104,"本题考查知识点： 嵌套字典创建 DataFrame 的行列索引。
+解析： 嵌套字典的外层键（Red, Blue）作为列名，内层键（2010等）作为行索引。2011 这一行在 Blue 列没有值，故为 NaN 。",0,1,D,2026051104,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+d = {'Red': {2010: 1, 2011: 2}, 'Blue': {2010: 3, 2012: 4}}
+df = pd.DataFrame(d)
+print(df.loc[2011, 'Blue'])
+
+A. 2
+B. 3
+C. 4
+D. NaN",1,DataFrame
+1,0,0,0,0,随堂小测2026051104,"本题考查知识点： 嵌套字典创建 DataFrame 的行列索引。
+解析： 嵌套字典的外层键（Red, Blue）作为列名，内层键（2010等）作为行索引。2011 这一行在 Blue 列没有值，故为 NaN 。",0,1,D,2026051104,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+d = {'Red': {2010: 1, 2011: 2}, 'Blue': {2010: 3, 2012: 4}}
+df = pd.DataFrame(d)
+print(df.loc[2011, 'Blue'])
+
+A. 2
+B. 3
+C. 4
+D. NaN",1,选取和过滤功能
+1,0,0,0,0,随堂小测2026051104,"本题考查知识点： 嵌套字典创建 DataFrame 的行列索引。
+解析： 嵌套字典的外层键（Red, Blue）作为列名，内层键（2010等）作为行索引。2011 这一行在 Blue 列没有值，故为 NaN 。",0,1,D,2026051104,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+d = {'Red': {2010: 1, 2011: 2}, 'Blue': {2010: 3, 2012: 4}}
+df = pd.DataFrame(d)
+print(df.loc[2011, 'Blue'])
+
+A. 2
+B. 3
+C. 4
+D. NaN",1,缺失数据
+1,0,0,0,0,随堂小测2026051105,"本题考查知识点： Index 对象的不可变性（Immutability）。
+解析： Pandas 的 Index 对象不支持修改操作，尝试修改会抛出 TypeError 。",0,1,B,2026051105,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+obj = pd.Series([1, 2], index=['a', 'b'])
+idx = obj.index
+try:
+    idx[0] = 'c'
+    print(""Success"")
+except TypeError:
+    print(""Error"")
+
+A. Success
+B. Error
+C. ['c', 'b']
+D. [1, 2]",1,索引对象
+1,0,0,0,0,随堂小测2026051106,"本题考查知识点： reindex 的前向填充（ffill）。
+解析： reindex 后索引变为 [0, 1, 2]，位置 1 缺失。ffill 会用前一个有效值（索引 0 处的 'apple'）填充位置 1 。",0,1,A,2026051106,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series(['apple', 'banana'], index=[0, 2])
+res = s.reindex(range(3), method='ffill')
+print(res[1])
+
+A. apple
+B. banana
+C. NaN
+D. 0",1,Series
+1,0,0,0,0,随堂小测2026051106,"本题考查知识点： reindex 的前向填充（ffill）。
+解析： reindex 后索引变为 [0, 1, 2]，位置 1 缺失。ffill 会用前一个有效值（索引 0 处的 'apple'）填充位置 1 。",0,1,A,2026051106,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series(['apple', 'banana'], index=[0, 2])
+res = s.reindex(range(3), method='ffill')
+print(res[1])
+
+A. apple
+B. banana
+C. NaN
+D. 0",1,Pandas-重新索引
+1,0,0,0,0,随堂小测2026051106,"本题考查知识点： reindex 的前向填充（ffill）。
+解析： reindex 后索引变为 [0, 1, 2]，位置 1 缺失。ffill 会用前一个有效值（索引 0 处的 'apple'）填充位置 1 。",0,1,A,2026051106,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series(['apple', 'banana'], index=[0, 2])
+res = s.reindex(range(3), method='ffill')
+print(res[1])
+
+A. apple
+B. banana
+C. NaN
+D. 0",1,Pandas-函数
+1,0,0,0,0,随堂小测2026051107,"本题考查知识点： 算术运算中的自动对齐。
+解析： 两个 Series 相加，索引不重合的部分结果为 NaN（如 'a'），索引重合的部分相加（'b'：2+3=5） 。",0,1,B,2026051107,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s1 = pd.Series([1, 2], index=['a', 'b'])
+s2 = pd.Series([3, 4], index=['b', 'c'])
+res = s1 + s2
+print(res['a'], res['b'])
+
+A. 1.0 5.0
+B. NaN 5.0
+C. 1.0 6.0
+D. NaN 6.0",1,Series
+1,0,0,0,0,随堂小测2026051107,"本题考查知识点： 算术运算中的自动对齐。
+解析： 两个 Series 相加，索引不重合的部分结果为 NaN（如 'a'），索引重合的部分相加（'b'：2+3=5） 。",0,1,B,2026051107,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s1 = pd.Series([1, 2], index=['a', 'b'])
+s2 = pd.Series([3, 4], index=['b', 'c'])
+res = s1 + s2
+print(res['a'], res['b'])
+
+A. 1.0 5.0
+B. NaN 5.0
+C. 1.0 6.0
+D. NaN 6.0",1,算术运算和数据对齐
+1,0,0,0,0,随堂小测2026051107,"本题考查知识点： 算术运算中的自动对齐。
+解析： 两个 Series 相加，索引不重合的部分结果为 NaN（如 'a'），索引重合的部分相加（'b'：2+3=5） 。",0,1,B,2026051107,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s1 = pd.Series([1, 2], index=['a', 'b'])
+s2 = pd.Series([3, 4], index=['b', 'c'])
+res = s1 + s2
+print(res['a'], res['b'])
+
+A. 1.0 5.0
+B. NaN 5.0
+C. 1.0 6.0
+D. NaN 6.0",1,缺失数据
+1,0,0,0,0,随堂小测2026051108,"本题考查知识点： 布尔型过滤与索引访问。
+
+
+解析： df['val'] > 15 得到 [False, True, True]，过滤后剩下索引为 'b' 和 'c' 的行。.index[0] 取第一个剩下的索引，即 'b' 。",0,1,B,2026051108,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame({'val': [10, 20, 30]}, index=['a', 'b', 'c'])
+res = df[df['val'] > 15].index[0]
+print(res)
+
+A. a
+B. b
+C. c
+D. 20",1,DataFrame
+1,0,0,0,0,随堂小测2026051108,"本题考查知识点： 布尔型过滤与索引访问。
+
+
+解析： df['val'] > 15 得到 [False, True, True]，过滤后剩下索引为 'b' 和 'c' 的行。.index[0] 取第一个剩下的索引，即 'b' 。",0,1,B,2026051108,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame({'val': [10, 20, 30]}, index=['a', 'b', 'c'])
+res = df[df['val'] > 15].index[0]
+print(res)
+
+A. a
+B. b
+C. c
+D. 20",1,选取和过滤功能
+1,0,0,0,0,随堂小测2026051108,"本题考查知识点： 布尔型过滤与索引访问。
+
+
+解析： df['val'] > 15 得到 [False, True, True]，过滤后剩下索引为 'b' 和 'c' 的行。.index[0] 取第一个剩下的索引，即 'b' 。",0,1,B,2026051108,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame({'val': [10, 20, 30]}, index=['a', 'b', 'c'])
+res = df[df['val'] > 15].index[0]
+print(res)
+
+A. a
+B. b
+C. c
+D. 20",1,索引对象
+1,0,0,0,0,随堂小测2026051109,"本题考查知识点： drop 删除列。
+解析： axis=1 或 axis='columns' 表示删除列。删掉 'A' 列后，剩下的第一列是 'B' 。",0,1,B,2026051109,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame([[1, 2], [3, 4]], columns=['A', 'B'])
+df2 = df.drop('A', axis=1)
+print(df2.columns[0])
+
+A. A
+B. B
+C. 0
+D. 1",1,DataFrame
+1,0,0,0,0,随堂小测2026051109,"本题考查知识点： drop 删除列。
+解析： axis=1 或 axis='columns' 表示删除列。删掉 'A' 列后，剩下的第一列是 'B' 。",0,1,B,2026051109,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+df = pd.DataFrame([[1, 2], [3, 4]], columns=['A', 'B'])
+df2 = df.drop('A', axis=1)
+print(df2.columns[0])
+
+A. A
+B. B
+C. 0
+D. 1",1,Pandas-删除
+1,0,0,0,0,随堂小测2026051110,"本题考查知识点： Pandas 对象的基本属性。
+解析： size 返回元素个数（3），ndim 返回维度（Series 是一维，故为 1）。3 + 1 = 4 。",0,1,B,2026051110,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series([1, 2, 3])
+print(s.size + s.ndim)
+
+A. 3
+B. 4
+C. 5
+D. 6",1,Series
+1,0,0,0,0,随堂小测2026051110,"本题考查知识点： Pandas 对象的基本属性。
+解析： size 返回元素个数（3），ndim 返回维度（Series 是一维，故为 1）。3 + 1 = 4 。",0,1,B,2026051110,1,0,"执行以下代码，输出结果是（）
+
+import pandas as pd
+s = pd.Series([1, 2, 3])
+print(s.size + s.ndim)
+
+A. 3
+B. 4
+C. 5
+D. 6",1,Pandas基本属性和方法
+1,0,0,0,0,随堂小测2026051111,"本题考查知识点： 索引唯一性检查。
+解析： 索引中包含两个 'a'，因此 is_unique 属性为 False 。",0,1,False,2026051111,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+obj = pd.Series(range(3), index=['a', 'a', 'b'])
+print(obj.index.is_unique)",1,索引对象
+1,0,0,0,0,随堂小测2026051111,"本题考查知识点： 索引唯一性检查。
+解析： 索引中包含两个 'a'，因此 is_unique 属性为 False 。",0,1,False,2026051111,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+obj = pd.Series(range(3), index=['a', 'a', 'b'])
+print(obj.index.is_unique)",1,Pandas-重复索引
+1,0,0,0,0,随堂小测2026051112,"本题考查知识点： values 属性。
+解析： values 将 Series 转为一维 NumPy 数组，下标 [1] 对应元素 20 。",0,1,20,2026051112,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+s = pd.Series([10, 20, 30])
+print(s.values[1])",1,Series
+1,0,0,0,0,随堂小测2026051112,"本题考查知识点： values 属性。
+解析： values 将 Series 转为一维 NumPy 数组，下标 [1] 对应元素 20 。",0,1,20,2026051112,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+s = pd.Series([10, 20, 30])
+print(s.values[1])",1,Pandas基本属性和方法
+1,0,0,0,0,随堂小测2026051113,"本题考查知识点： DataFrame 转置。
+解析： 原 DataFrame 列为 ['alis', 'bob']。转置 .T 后，原列名变为新行索引，故 index[0] 为 'alis' 。",0,1,alis,2026051113,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+data = {'alis': {'born': 2010}, 'bob': {'born': 2011}}
+frame = pd.DataFrame(data)
+print(frame.T.index[0])",1,DataFrame
+1,0,0,0,0,随堂小测2026051113,"本题考查知识点： DataFrame 转置。
+解析： 原 DataFrame 列为 ['alis', 'bob']。转置 .T 后，原列名变为新行索引，故 index[0] 为 'alis' 。",0,1,alis,2026051113,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+data = {'alis': {'born': 2010}, 'bob': {'born': 2011}}
+frame = pd.DataFrame(data)
+print(frame.T.index[0])",1,Pandas基本属性和方法
+1,0,0,0,0,随堂小测2026051114,"本题考查知识点： head() 函数。
+解析： head(2) 返回前 2 行数据，其长度为 2 。",0,1,2,2026051114,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+s = pd.Series(range(10))
+print(len(s.head(2)))",1,Series
+1,0,0,0,0,随堂小测2026051114,"本题考查知识点： head() 函数。
+解析： head(2) 返回前 2 行数据，其长度为 2 。",0,1,2,2026051114,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+s = pd.Series(range(10))
+print(len(s.head(2)))",1,Pandas基本属性和方法
+1,0,0,0,0,随堂小测2026051115,"本题考查知识点： add 方法与 fill_value。
+解析： df1 在 'b' 列缺失，df2 在 'a' 列缺失。使用 fill_value=0 后，缺失位置视为 0。对于 'a' 列：1 + 0 = 1.0 。",0,1,1.0,2026051115,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+df1 = pd.DataFrame({'a': [1]}, index=[0])
+df2 = pd.DataFrame({'b': [2]}, index=[0])
+res = df1.add(df2, fill_value=0)
+print(res.loc[0, 'a'])",1,DataFrame
+1,0,0,0,0,随堂小测2026051115,"本题考查知识点： add 方法与 fill_value。
+解析： df1 在 'b' 列缺失，df2 在 'a' 列缺失。使用 fill_value=0 后，缺失位置视为 0。对于 'a' 列：1 + 0 = 1.0 。",0,1,1.0,2026051115,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+df1 = pd.DataFrame({'a': [1]}, index=[0])
+df2 = pd.DataFrame({'b': [2]}, index=[0])
+res = df1.add(df2, fill_value=0)
+print(res.loc[0, 'a'])",1,算术运算和数据对齐
+1,0,0,0,0,随堂小测2026051115,"本题考查知识点： add 方法与 fill_value。
+解析： df1 在 'b' 列缺失，df2 在 'a' 列缺失。使用 fill_value=0 后，缺失位置视为 0。对于 'a' 列：1 + 0 = 1.0 。",0,1,1.0,2026051115,2,0,"执行以下代码，输出结果是______
+
+import pandas as pd
+df1 = pd.DataFrame({'a': [1]}, index=[0])
+df2 = pd.DataFrame({'b': [2]}, index=[0])
+res = df1.add(df2, fill_value=0)
+print(res.loc[0, 'a'])",1,Pandas-函数
+1,0,0,0,0,随堂小测2026051116,本题考查知识点： 描述和汇总、算术运算。  解析： sum(axis=1) 表示对行进行求和。Pandas 的统计方法默认跳过缺失值（skipna=True）。行 'b' 的值为 $7.1 + (-4.5) = 2.6$。  ,0,1,C,2026051116,1,0,"执行以下代码，输出结果是（ ）
+
+import pandas as pd
+import numpy as np
+df = pd.DataFrame([[1.4, np.nan], [7.1, -4.5], [np.nan, np.nan], [0.75, -1.3]], index=['a', 'b', 'c', 'd'], columns=['one', 'two'])
+print(df.sum(axis=1)['b'])
+
+A. 7.1
+B. -4.5
+C. 2.6
+D. NaN",1,描述和汇总
+1,0,0,0,0,随堂小测2026051117,"本题考查知识点： 描述和汇总。  
+解析： 对于非数值型数据，describe 会返回统计摘要（计数、唯一值数量、最高频值等），但不会计算平均值（mean）或标准差。",0,1,B,2026051117,1,0,"关于 df.describe() 方法，若 df 的列全为字符串（Object），输出结果中不包含哪项（ ）
+
+s = pd.Series(['a', 'a', 'b', 'c'])
+print(s.describe())
+
+A. count
+B. mean
+C. unique
+D. top",1,描述和汇总
+1,0,0,0,0,随堂小测2026051118,"本题考查知识点： 相关系数和协方差。  
+解析： corr 计算皮尔逊相关系数。由于 s1 和 s2 完全一致，其线性相关性为完全正相关，结果为 1.0。",0,1,B,2026051118,1,0,"执行以下代码，输出结果是（ ）
+
+import pandas as pd
+s1 = pd.Series([1, 2, 3], index=['a', 'b', 'c'])
+s2 = pd.Series([1, 2, 3], index=['a', 'b', 'c'])
+print(s1.corr(s2))
+
+A. 0.0
+B. 1.0
+C. 3.0
+D. 6.0",1,相关系数和协方差
+1,0,0,0,0,随堂小测2026051119,"本题考查知识点： Pandas-函数（apply）。  
+解析： axis=1 表示函数 f 作用于每一行。第二行（索引 1）的数据是 [2, 3]，最大值 3 减最小值 2 等于 1。",0,1,A,2026051119,1,0,"执行以下代码，输出结果是（ ）
+
+import pandas as pd
+import numpy as np
+df = pd.DataFrame(np.arange(6).reshape(3, 2), columns=['A', 'B'])
+f = lambda x: x.max() - x.min()
+res = df.apply(f, axis=1)
+print(res[1])
+
+A. 1
+B. 2
+C. 3
+D. 5",1,Pandas-函数
+1,0,0,0,0,随堂小测2026051120,本题考查知识点： Pandas-函数（applymap）。  解析： applymap 是元素级（Element-wise）函数应用，会将 int() 作用于每一个单元格。1.1 变为 1。,0,1,B,2026051120,1,0,"执行以下代码，关于 applymap 的说法正确的是（ ）
+
+df = pd.DataFrame([[1.1, 2.2], [3.3, 4.4]])
+res = df.applymap(lambda x: int(x))
+print(res.iloc[0, 0])
+
+A. 输出为 1.1，因为它作用于整列
+B. 输出为 1，因为它作用于每一个元素
+C. 程序报错，applymap 只能用于 Series
+D. 输出为 1.0，因为它作用于每一行",1,Pandas-函数
+1,0,0,0,0,随堂小测2026051121,"本题考查知识点： 将表格型数据读取为 DataFrame 对象（CSV）。  
+解析： 若没有标题行，设置 header=None 会使 Pandas 自动分配默认列名（0, 1...），或者配合 names 传入自定义列名。",0,1,A,2026051121,1,0,"在读取 CSV 文件时，若文件没有列标题，应使用哪个参数（ ）
+
+# 假设文件 test.csv 内容为: 1, 2, 3
+df = pd.read_csv('test.csv', header=None)
+
+A. header=None
+B. index_col=0
+C. skiprows=1
+D. sep=' '",1,将表格型数据读取为DataFrame对象
+1,0,0,0,0,随堂小测2026051122,本题考查知识点： Pandas-函数（NumPy ufuncs）。  解析： NumPy 的通用函数（ufuncs）可以直接作用于 Pandas 对象。np.abs 会计算所有元素的绝对值。|-3| = 3。,0,1,B,2026051122,1,0,"执行以下代码，输出结果是（ ）
+
+import pandas as pd
+import numpy as np
+df = pd.DataFrame([[1, -2], [-3, 4]])
+res = np.abs(df)
+print(res.iloc[1, 0])
+
+A. -3
+B. 3
+C. 4
+D. NaN",1,Pandas-函数
+1,0,0,0,0,随堂小测2026051123,本题考查知识点： 根据分级汇总。  解析： level=0 指按第一层索引 'a' 进行汇总。'a' 对应的 C1 列数值为 0 和 2，0 + 2 = 2。  ,0,1,C,2026051123,1,0,"执行以下代码，涉及分级汇总，输出结果是（ ）
+
+import pandas as pd
+import numpy as np
+df = pd.DataFrame(np.arange(4).reshape(2, 2), 
+                  index=[['a', 'a'], [1, 2]], 
+                  columns=['C1', 'C2'])
+res = df.sum(level=0)
+print(res.loc['a', 'C1'])
+
+A. 0
+B. 1
+C. 2
+D. 3",1,根据分级汇总
+1,0,0,0,0,随堂小测2026051124,"本题考查知识点： 写出到文本格式。  
+解析： sep 参数用于指定输出文件中的分隔符。",0,1,B,2026051124,1,0,"在执行 to_csv 写出数据时，若想更改字段分隔符为分号 ;，应使用（ ）
+A. delimiter=';'
+B. sep=';'
+C. header=';'
+D. index=False",1,CSV文件
+1,0,0,0,0,随堂小测2026051124,"本题考查知识点： 写出到文本格式。  
+解析： sep 参数用于指定输出文件中的分隔符。",0,1,B,2026051124,1,0,"在执行 to_csv 写出数据时，若想更改字段分隔符为分号 ;，应使用（ ）
+A. delimiter=';'
+B. sep=';'
+C. header=';'
+D. index=False",1,写出到文本格式

@@ -1,0 +1,1 @@
+"""Mastery application placeholder."""

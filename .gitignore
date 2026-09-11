@@ -1,0 +1,13 @@
+.env
+.codex/
+.npm-cache/
+.pip-cache/
+__pycache__/
+**/__pycache__/
+docs/
+node_modules/
+scripts/
+.gitkeep
+*.log
+glotio.py
+test_piston.py
