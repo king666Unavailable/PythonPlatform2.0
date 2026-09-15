@@ -2,9 +2,10 @@ import type { User } from '@/types/auth'
 import type { StudentProfileReport } from '@/types/student'
 import type { KnowledgeGraphResponse } from '@/types/knowledge'
 import type { StudentMasteryResponse } from '@/types/mastery'
+import type { LearningProfileReport } from '@/types/learningProfile'
 import type { LearningPathResponse, StudentAnalyticsResponse } from '@/types/analytics'
 import type { Question, QuestionListResponse } from '@/types/question'
-import type { ClassAnalyticsResponse, TeacherStudentProfileResponse } from '@/types/teacher'
+import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, TeacherStudentProfileResponse } from '@/types/teacher'
 import type { WorkspaceData } from '@/types/workspace'
 import type { ClassContextResponse, TeachingClass } from '@/types/classContext'
 import type { NavigationVisibilityItem } from '@/types/navigation'
@@ -159,6 +160,10 @@ export function fetchStudentMastery() {
   return request<StudentMasteryResponse>('/api/v1/student/me/mastery')
 }
 
+export function fetchStudentLearningProfile() {
+  return request<LearningProfileReport>('/api/v1/student/me/learning-profile')
+}
+
 export function fetchLearningPath() {
   return request<LearningPathResponse>('/api/v1/student/me/learning-path')
 }
@@ -173,6 +178,16 @@ export function fetchClassAnalytics(classId = 'all') {
 
 export function fetchTeacherStudentProfile(studentId: string) {
   return request<TeacherStudentProfileResponse>(`/api/v1/students/${encodeURIComponent(studentId)}/profile`)
+}
+
+export function fetchTeacherClassMastery(nodeType = '', nodeId = '') {
+  const params = new URLSearchParams()
+  if (nodeType && nodeId) {
+    params.set('node_type', nodeType)
+    params.set('node_id', nodeId)
+  }
+  const query = params.toString()
+  return request<ClassKnowledgeMasteryResponse>(`/api/v1/teacher/class/knowledge-mastery${query ? `?${query}` : ''}`)
 }
 
 export function fetchTeacherClasses() {
@@ -308,6 +323,30 @@ export function createMockTest(payload: Record<string, unknown>) {
 
 export function fetchKnowledgeNodes(type = 'Point') {
   return request<{ items: Array<Record<string, unknown>> }>(`/api/v1/teacher/knowledge/nodes?type=${encodeURIComponent(type)}`)
+}
+
+export interface KnowledgeManagementNode {
+  id: string
+  title: string
+  type: 'class' | 'theme' | 'knowledge' | 'point'
+  level: number
+  properties: Record<string, unknown>
+  parent_type: 'class' | 'theme' | 'knowledge' | null
+  parent_id: string | null
+  children_count: number
+  question_count: number
+}
+
+export function fetchKnowledgeManagementStructure() {
+  return request<{ graph: { nodes: KnowledgeManagementNode[]; edges: Array<{ source: string; target: string; relation: string }> }; meta: { read_only: boolean; source: string } }>('/api/v1/teacher/knowledge/structure')
+}
+
+export function fetchKnowledgeManagementNode(nodeId: string) {
+  return request<{ node: KnowledgeManagementNode & { children: KnowledgeManagementNode[] }; meta: Record<string, unknown> }>(`/api/v1/teacher/knowledge/nodes/${encodeURIComponent(nodeId)}/detail`)
+}
+
+export function fetchKnowledgeNodeDeleteImpact(nodeId: string) {
+  return request<{ impact: { can_delete: boolean; children_count: number; question_count: number } }>(`/api/v1/teacher/knowledge/nodes/${encodeURIComponent(nodeId)}/impact`)
 }
 
 export function createKnowledgeNode(payload: Record<string, unknown>) {

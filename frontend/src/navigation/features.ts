@@ -48,7 +48,7 @@ const teacherGroups: NavigationGroup[] = [
     label: '课程资源',
     items: [
       { id: 'teacher-question-bank', label: '题库管理', icon: 'question', to: '/teacher/questions' },
-      { id: 'teacher-knowledge', label: '知识节点', icon: 'knowledge', to: '/teacher/knowledge' },
+      { id: 'teacher-knowledge', label: '知识图谱管理', icon: 'knowledge', to: '/teacher/knowledge' },
       { id: 'teacher-ai', label: 'AI 出题', icon: 'spark', to: '/teacher/ai' },
     ],
   },

@@ -2,17 +2,24 @@
 import { DataSet, Network } from 'vis-network/standalone/esm/vis-network'
 import 'vis-network/styles/vis-network.min.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { fetchKnowledgeGraph } from '@/api/client'
+import { fetchKnowledgeGraph, fetchStudentMastery } from '@/api/client'
 import type { KnowledgeGraphNode, KnowledgeGraphResponse } from '@/types/knowledge'
+import type { StudentMasteryNode, StudentMasteryResponse } from '@/types/mastery'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 
 type MasteryValue = number | null
-type ViewNode = KnowledgeGraphNode & { mastery: MasteryValue; studyTime: number; practiceRate: number }
+type ViewNode = KnowledgeGraphNode & {
+  mastery: MasteryValue
+  accuracy: MasteryValue
+  attemptedCount: number
+  correctEquivalent: number
+}
 type ColorValue = { background: string; border: string }
 
 const graph = ref<KnowledgeGraphResponse | null>(null)
+const mastery = ref<StudentMasteryResponse | null>(null)
 const loading = ref(true)
 const error = ref('')
 const selectedNodeId = ref('')
@@ -22,22 +29,29 @@ let network: Network | null = null
 const DEFAULT_GRAPH_SCALE = 1
 const DEFAULT_GRAPH_POSITION = { x: 0, y: 0 }
 
-const graphNodes = computed<ViewNode[]>(() => (graph.value?.graph.nodes ?? []).map((node) => ({
-  ...node,
-  // 掌握度暂未接入新的学生画像数据，保留为 null，避免伪造学生成绩。
-  mastery: null,
-  studyTime: 0,
-  practiceRate: 0,
-})))
+const masteryByGraphNodeId = computed(() => new Map(
+  (mastery.value?.nodes ?? [])
+    .filter((item): item is StudentMasteryNode & { graph_node_id: string } => Boolean(item.graph_node_id))
+    .map((item) => [item.graph_node_id, item]),
+))
+const graphNodes = computed<ViewNode[]>(() => (graph.value?.graph.nodes ?? []).map((node) => {
+  const item = masteryByGraphNodeId.value.get(node.id)
+  return {
+    ...node,
+    mastery: item?.score ?? null,
+    accuracy: item?.accuracy ?? null,
+    attemptedCount: item?.attempted_count ?? 0,
+    correctEquivalent: item?.correct_equivalent ?? 0,
+  }
+}))
 const nodeMap = computed(() => new Map(graphNodes.value.map((node) => [node.id, node])))
 const graphEdges = computed(() => graph.value?.graph.edges ?? [])
 const selectedNode = computed(() => nodeMap.value.get(selectedNodeId.value) ?? null)
 const prerequisiteNodes = computed(() => graphEdges.value.filter((edge) => edge.target === selectedNodeId.value).map((edge) => nodeMap.value.get(edge.source)).filter(Boolean) as ViewNode[])
 const subsequentNodes = computed(() => graphEdges.value.filter((edge) => edge.source === selectedNodeId.value).map((edge) => nodeMap.value.get(edge.target)).filter(Boolean) as ViewNode[])
-const maxStudyTime = 10
 
 function getNodeColor(mastery: MasteryValue): ColorValue {
-  if (mastery === null) return { background: '#3B82F6', border: '#2563EB' }
+  if (mastery === null) return { background: '#94A3B8', border: '#64748B' }
   if (mastery >= 80) return { background: '#10B981', border: '#059669' }
   if (mastery >= 60) return { background: '#3B82F6', border: '#2563EB' }
   if (mastery >= 40) return { background: '#F59E0B', border: '#D97706' }
@@ -50,6 +64,10 @@ function levelLabel(node: ViewNode) {
 
 function masteryLabel(mastery: MasteryValue) {
   return mastery === null ? '暂无记录' : `${mastery.toFixed(1)}%`
+}
+
+function accuracyLabel(accuracy: MasteryValue) {
+  return accuracy === null ? '暂无记录' : `${accuracy.toFixed(1)}%`
 }
 
 function renderNetwork() {
@@ -140,6 +158,11 @@ async function load() {
   error.value = ''
   try {
     graph.value = await fetchKnowledgeGraph()
+    try {
+      mastery.value = await fetchStudentMastery()
+    } catch (cause) {
+      error.value = cause instanceof Error ? `图谱已加载，但个人掌握度暂不可用：${cause.message}` : '图谱已加载，但个人掌握度暂不可用。'
+    }
     loading.value = false
     await nextTick()
     renderNetwork()
@@ -161,7 +184,10 @@ onBeforeUnmount(() => network?.destroy())
     <section v-else-if="graph" class="knowledge-path-layout">
       <div class="knowledge-path-graph-card">
         <div class="knowledge-path-card-heading">
-          <h2>知识图谱</h2>
+          <div>
+            <h2>知识图谱</h2>
+            <p v-if="mastery?.summary.course_score != null" class="knowledge-path-overview">课程掌握度 {{ mastery?.summary.course_score }}% · 已作答 {{ mastery?.summary.attempted_questions }} 题</p>
+          </div>
           <div class="knowledge-path-actions">
             <button type="button" title="放大" aria-label="放大" @click="zoomIn">＋</button>
             <button type="button" title="缩小" aria-label="缩小" @click="zoomOut">－</button>
@@ -188,10 +214,10 @@ onBeforeUnmount(() => network?.destroy())
             </div>
             <div class="knowledge-mastery-value">{{ masteryLabel(selectedNode?.mastery ?? null) }}<span>掌握程度</span></div>
             <div class="knowledge-path-progress-list">
-              <div><span>已学习时间</span><strong>{{ selectedNode?.studyTime ?? 0 }}小时</strong></div>
-              <div class="knowledge-progress"><i :style="{ width: `${Math.min((selectedNode?.studyTime ?? 0) / maxStudyTime * 100, 100)}%` }" /></div>
-              <div><span>练习完成率</span><strong>{{ selectedNode?.practiceRate ?? 0 }}%</strong></div>
-              <div class="knowledge-progress progress-green"><i :style="{ width: `${selectedNode?.practiceRate ?? 0}%` }" /></div>
+              <div><span>已作答题目</span><strong>{{ selectedNode?.attemptedCount ?? 0 }} 道</strong></div>
+              <div class="knowledge-progress"><i :style="{ width: `${selectedNode?.mastery ?? 0}%` }" /></div>
+              <div><span>答题正确率</span><strong>{{ accuracyLabel(selectedNode?.accuracy ?? null) }}</strong></div>
+              <div class="knowledge-progress progress-green"><i :style="{ width: `${selectedNode?.accuracy ?? 0}%` }" /></div>
             </div>
           </div>
 

@@ -30,9 +30,12 @@ class NavigationSettingsRepository:
             return
         with self.connection.cursor() as cursor:
             cursor.executemany(
-                """INSERT IGNORE INTO feature_visibility_settings
+                """INSERT INTO feature_visibility_settings
                    (role,feature_id,feature_label,group_label,icon,route_path,sort_order,is_visible)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,1)""",
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,1)
+                   ON DUPLICATE KEY UPDATE
+                     feature_label=VALUES(feature_label),group_label=VALUES(group_label),
+                     icon=VALUES(icon),route_path=VALUES(route_path),sort_order=VALUES(sort_order)""",
                 [
                     (
                         role,

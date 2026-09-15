@@ -61,7 +61,7 @@ const routes = [
       { path: 'teacher/assignments/:id/statistics', name: 'teacher-assignment-statistics', component: TeacherAssignmentStatisticsView, meta: { roles: ['teacher'], featureId: 'teacher-assignments', title: '作业统计' } },
       { path: 'teacher/assignments/:id/makeup-windows', name: 'teacher-assignment-makeups', component: TeacherMakeupWindowsView, meta: { roles: ['teacher'], featureId: 'teacher-assignments', title: '补交设置' } },
       { path: 'teacher/questions', name: 'teacher-question-bank', component: TeacherQuestionBankView, meta: { roles: ['teacher'], featureId: 'teacher-question-bank', title: '题库管理' } },
-      { path: 'teacher/knowledge', name: 'teacher-knowledge', component: TeacherKnowledgeView, meta: { roles: ['teacher'], featureId: 'teacher-knowledge', title: '知识节点' } },
+      { path: 'teacher/knowledge', name: 'teacher-knowledge', component: TeacherKnowledgeView, meta: { roles: ['teacher'], featureId: 'teacher-knowledge', title: '知识图谱管理' } },
       { path: 'teacher/exams', name: 'teacher-exams', component: TeacherExamsView, meta: { roles: ['teacher'], featureId: 'teacher-exams', title: '组卷与考试' } },
       { path: 'teacher/ai', name: 'teacher-ai', component: TeacherAiView, meta: { roles: ['teacher'], featureId: 'teacher-ai', title: 'AI 出题' } },
       { path: 'admin', name: 'admin-home', component: AdminHomeView, meta: { roles: ['admin'], title: '平台概览' } },

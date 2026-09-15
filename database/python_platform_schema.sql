@@ -337,6 +337,28 @@ CREATE TABLE IF NOT EXISTS `submission_grades` (
   UNIQUE KEY `uq_submission_grades_submission_question` (`submission_id`,`question_position`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `student_mastery` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `student_username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `class_id` bigint unsigned NOT NULL,
+  `node_type` varchar(16) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `node_id` bigint unsigned NOT NULL,
+  `node_title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `attempted_count` int unsigned NOT NULL DEFAULT '0',
+  `correct_equivalent` decimal(12,4) NOT NULL DEFAULT '0.0000',
+  `wrong_equivalent` decimal(12,4) NOT NULL DEFAULT '0.0000',
+  `accuracy_score` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `mastery_score` decimal(6,2) NOT NULL DEFAULT '0.00',
+  `last_answered_at` datetime DEFAULT NULL,
+  `calculation_version` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'legacy_compatible_v1',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_student_mastery_node` (`student_username`,`class_id`,`node_type`,`node_id`),
+  KEY `idx_student_mastery_student_class` (`student_username`,`class_id`),
+  KEY `idx_student_mastery_node` (`node_type`,`node_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `code_runs` (
   `id` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `student_username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,

@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from apps.assignments.services import AssignmentNotFound, AssignmentService
+from apps.mastery.services import MasteryBackendUnavailable, MasteryService
 from domain.scoring import ScoringService
 from repositories.learning_repository import LearningRepository
+
+
+logger = logging.getLogger("submissions")
 
 
 class SubmissionNotFound(LookupError):
@@ -83,6 +88,14 @@ class SubmissionService:
                 result["items"],
             )
             repository.write_audit({"username": username, "role": "student"}, "submission.create", "submission", submission["id"], {"assignment_id": assignment_id})
+        effective_class_id = str(assignment.get("class_id") or class_id or "").strip()
+        if result["status"] == "graded" and effective_class_id:
+            try:
+                MasteryService().refresh_for_student(username, effective_class_id)
+            except MasteryBackendUnavailable:
+                # Submission persistence and its audit log have already succeeded.
+                # A later page request can rebuild this derived MySQL snapshot.
+                logger.exception("student_mastery_refresh_after_submission_failed", extra={"submission_id": submission["id"]})
         return graded or submission, False
 
     def get_for_student(self, submission_id: str, username: str) -> dict[str, Any]:

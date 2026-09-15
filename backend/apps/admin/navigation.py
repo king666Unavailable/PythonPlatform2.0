@@ -21,7 +21,7 @@ NAVIGATION_FEATURES: dict[str, tuple[dict[str, str | int], ...]] = {
         {"id": "teacher-assignments", "label": "作业管理", "group": "教学工作台", "icon": "assignment", "path": "/teacher/assignments", "sort_order": 30},
         {"id": "teacher-exams", "label": "组卷与考试", "group": "教学工作台", "icon": "exam", "path": "/teacher/exams", "sort_order": 40},
         {"id": "teacher-question-bank", "label": "题库管理", "group": "课程资源", "icon": "question", "path": "/teacher/questions", "sort_order": 50},
-        {"id": "teacher-knowledge", "label": "知识节点", "group": "课程资源", "icon": "knowledge", "path": "/teacher/knowledge", "sort_order": 60},
+        {"id": "teacher-knowledge", "label": "知识图谱管理", "group": "课程资源", "icon": "knowledge", "path": "/teacher/knowledge", "sort_order": 60},
         {"id": "teacher-ai", "label": "AI 出题", "group": "课程资源", "icon": "spark", "path": "/teacher/ai", "sort_order": 70},
     ),
 }

@@ -1,64 +1,78 @@
-"""Application service for F06 student personal mastery."""
+"""Application service for student personal knowledge mastery."""
 
 from __future__ import annotations
 
 import logging
 
-from repositories.mastery_repository import (
-    LegacyMasteryRepository,
-    MasteryKnowledge,
-    MasteryTheme,
-    Neo4jMasteryRepository,
-    StudentMastery,
-)
+from repositories.mysql_mastery_repository import MySQLStudentMasteryRepository, StudentMasteryReport
+from repositories.mysql_class_mastery_repository import MySQLClassMasteryRepository
+from repositories.mysql_learning_profile_repository import MySQLLearningProfileRepository
 
 
 logger = logging.getLogger("mastery")
 
 
 class MasteryBackendUnavailable(RuntimeError):
-    """Raised when Neo4j or the legacy mastery source cannot be read."""
-
-
-class MasteryNotFound(LookupError):
-    """Raised when the logged-in student has no row in the mastery snapshot."""
+    """Raised when MySQL mastery data cannot be read or refreshed."""
 
 
 class MasteryService:
-    """Combine the current graph labels with the legacy student's read-only scores."""
+    """Read MySQL mastery data scoped to the student's current teaching class."""
 
-    def get_by_username(self, username: str) -> StudentMastery:
+    def get_by_username(self, username: str, class_id: str) -> StudentMasteryReport:
         try:
-            with Neo4jMasteryRepository() as graph_repository:
-                structure = graph_repository.fetch_structure()
-            titles = tuple(
-                dict.fromkeys(
-                    [theme.title for theme in structure]
-                    + [knowledge_title for theme in structure for _, knowledge_title in theme.knowledge]
-                )
-            )
-            scores = LegacyMasteryRepository().find_scores(username, titles)
+            with MySQLStudentMasteryRepository() as repository:
+                report = repository.get_report(username, class_id)
+                # A new student has no rows until the first formal submission.
+                # For migrated students this also safely rebuilds an absent cache.
+                return report if report.nodes else repository.refresh_for_student(username, class_id)
         except Exception as exc:
             logger.exception("student_mastery_backend_unavailable", extra={"error_type": type(exc).__name__})
             raise MasteryBackendUnavailable from exc
 
-        if scores is None:
-            raise MasteryNotFound
+    def refresh_for_student(self, username: str, class_id: str) -> StudentMasteryReport:
+        try:
+            with MySQLStudentMasteryRepository() as repository:
+                return repository.refresh_for_student(username, class_id)
+        except Exception as exc:
+            logger.exception("student_mastery_refresh_failed", extra={"error_type": type(exc).__name__})
+            raise MasteryBackendUnavailable from exc
 
-        themes = tuple(
-            MasteryTheme(
-                id=theme.id,
-                title=theme.title,
-                score=scores[theme.title],
-                knowledge=tuple(
-                    self._knowledge_item(knowledge_id, knowledge_title, scores)
-                    for knowledge_id, knowledge_title in theme.knowledge
-                ),
-            )
-            for theme in structure
-        )
-        return StudentMastery(username=username, themes=themes)
 
-    @staticmethod
-    def _knowledge_item(knowledge_id: str, title: str, scores: dict[str, float]) -> MasteryKnowledge:
-        return MasteryKnowledge(id=knowledge_id, title=title, score=scores[title])
+class ClassMasteryBackendUnavailable(RuntimeError):
+    """Raised when the teacher class mastery aggregation cannot be read."""
+
+
+class ClassMasteryService:
+    """Read-only class mastery aggregation scoped to one teaching class."""
+
+    def get_for_class(self, class_id: str, node_type: str = "", node_id: str = "") -> dict:
+        try:
+            with MySQLClassMasteryRepository() as repository:
+                return repository.get_report(class_id, node_type, node_id)
+        except Exception as exc:
+            logger.exception("class_mastery_backend_unavailable", extra={"error_type": type(exc).__name__})
+            raise ClassMasteryBackendUnavailable from exc
+
+
+class LearningProfileBackendUnavailable(RuntimeError):
+    """Raised when the student learning profile cannot be calculated."""
+
+
+class LearningProfileNotFound(LookupError):
+    """Raised when the logged-in student has no profile row."""
+
+
+class LearningProfileService:
+    """Read and calculate the current student's profile in MySQL."""
+
+    def get_by_username(self, username: str, class_id: str) -> dict:
+        try:
+            with MySQLLearningProfileRepository() as repository:
+                report = repository.build(username, class_id)
+        except Exception as exc:
+            logger.exception("student_learning_profile_backend_unavailable", extra={"error_type": type(exc).__name__})
+            raise LearningProfileBackendUnavailable from exc
+        if report is None:
+            raise LearningProfileNotFound
+        return report

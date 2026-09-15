@@ -35,9 +35,7 @@ onMounted(() => void load())
 
 <template>
   <div class="page-stack">
-    <PageHeader title="我的作业" description="查看作业进度、截止时间和提交结果，点击作业即可继续答题。">
-      <template #actions><RouterLink class="button-link secondary-button" to="/student/mock">开始模拟练习</RouterLink></template>
-    </PageHeader>
+    <PageHeader title="我的作业" description="查看作业进度、截止时间和提交结果，点击作业即可继续答题。" />
     <div class="tabs" role="tablist"><button v-for="tab in tabs" :key="tab" type="button" :class="{ active: filter === tab }" @click="filter = tab">{{ tab }}</button></div>
     <InlineMessage :message="error" tone="error" />
     <div v-if="loading" class="loading-state">正在加载作业…</div>

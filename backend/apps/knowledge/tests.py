@@ -69,3 +69,39 @@ class KnowledgeGraphApiTests(MySQLAuthenticationTestMixin, TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["code"], "KNOWLEDGE_GRAPH_BACKEND_UNAVAILABLE")
+
+    @patch("apps.knowledge.views.Neo4jContentRepository")
+    def test_teacher_can_read_management_structure(self, repository_class):
+        self._login("teacher", "teacher123")
+        repository = MagicMock()
+        repository.fetch_management_structure.return_value = {
+            "nodes": [
+                {"id": "class-1", "title": "Python", "type": "class", "level": 0, "parent_type": None, "parent_id": None, "children_count": 1, "question_count": 1, "properties": {}},
+            ],
+            "edges": [],
+        }
+        repository_class.return_value.__enter__.return_value = repository
+
+        response = self.client.get("/api/v1/teacher/knowledge/structure")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["graph"]["nodes"][0]["title"], "Python")
+        self.assertEqual(response.json()["meta"]["source"], "Neo4j")
+
+    @patch("apps.knowledge.views.Neo4jContentRepository")
+    def test_delete_is_blocked_when_node_has_dependencies(self, repository_class):
+        self._login("teacher", "teacher123")
+        repository = MagicMock()
+        repository.delete_node.side_effect = ValueError("node has dependent children")
+        repository.get_delete_impact.return_value = {
+            "node": {"id": "point-1", "title": "变量"},
+            "can_delete": False,
+            "children_count": 0,
+            "question_count": 2,
+        }
+        repository_class.return_value.__enter__.return_value = repository
+
+        response = self.client.delete("/api/v1/teacher/knowledge/nodes/point-1/delete")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "NODE_HAS_DEPENDENCIES")

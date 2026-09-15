@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { fetchClassAnalytics, fetchTeacherStudentProfile } from '@/api/client'
+import { fetchClassAnalytics, fetchTeacherClassMastery, fetchTeacherStudentProfile } from '@/api/client'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import ScoreLineChart from '@/components/data-display/ScoreLineChart.vue'
 import MetricCard from '@/components/ui/MetricCard.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
+import type { ClassKnowledgeMasteryResponse, ClassMasteryNode } from '@/types/teacher'
 
 const classId = ref('all')
 const data = ref<any>(null)
@@ -13,7 +14,11 @@ const student = ref<any>(null)
 const loading = ref(true)
 const studentLoading = ref(false)
 const error = ref('')
-const activeTab = ref<'analysis' | 'details'>('analysis')
+const activeTab = ref<'analysis' | 'details' | 'mastery'>('analysis')
+const masteryData = ref<ClassKnowledgeMasteryResponse | null>(null)
+const masteryLoading = ref(false)
+const masteryError = ref('')
+const selectedMasteryKey = ref('')
 
 type AveragePoint = { name: string; score: number }
 
@@ -54,17 +59,81 @@ async function openStudent(id: string) {
   }
 }
 
-function switchTab(tab: 'analysis' | 'details') {
+function switchTab(tab: 'analysis' | 'details' | 'mastery') {
   activeTab.value = tab
   if (tab === 'details') {
     student.value = null
     studentLoading.value = false
   }
+  if (tab === 'mastery' && !masteryData.value) void loadMastery()
 }
 
 function openStudentFromDetails(id: string) {
   activeTab.value = 'analysis'
   void openStudent(id)
+}
+
+function masteryKey(node: Pick<ClassMasteryNode, 'node_type' | 'node_id'>) {
+  return `${node.node_type}:${node.node_id}`
+}
+
+const masteryTreeRows = computed(() => {
+  const nodes = masteryData.value?.nodes ?? []
+  const nodeMap = new Map(nodes.map((node) => [masteryKey(node), node]))
+  const children = new Map<string, ClassMasteryNode[]>()
+  const roots: ClassMasteryNode[] = []
+  for (const node of nodes) {
+    const parentKey = node.parent_type && node.parent_id ? `${node.parent_type}:${node.parent_id}` : ''
+    if (parentKey && nodeMap.has(parentKey)) {
+      const group = children.get(parentKey) ?? []
+      group.push(node)
+      children.set(parentKey, group)
+    } else {
+      roots.push(node)
+    }
+  }
+  const order = { class: 0, theme: 1, knowledge: 2, point: 3 }
+  const sortNodes = (items: ClassMasteryNode[]) => items.sort((a, b) => (order[a.node_type] - order[b.node_type]) || a.title.localeCompare(b.title, 'zh-CN'))
+  const rows: Array<ClassMasteryNode & { depth: number }> = []
+  function visit(node: ClassMasteryNode, depth: number) {
+    rows.push({ ...node, depth })
+    for (const child of sortNodes(children.get(masteryKey(node)) ?? [])) visit(child, depth + 1)
+  }
+  for (const root of sortNodes(roots)) visit(root, 0)
+  return rows
+})
+
+const selectedMastery = computed(() => masteryData.value?.selected_node ?? null)
+
+function scoreLabel(score: number | null) {
+  return score == null ? '暂无数据' : `${score.toFixed(1)} 分`
+}
+
+function scoreTone(score: number | null) {
+  if (score == null) return 'mastery-no-data'
+  if (score >= 80) return 'mastery-excellent'
+  if (score >= 60) return 'mastery-good'
+  if (score >= 40) return 'mastery-warning'
+  return 'mastery-danger'
+}
+
+async function loadMastery(nodeType = '', nodeId = '') {
+  masteryLoading.value = true
+  masteryError.value = ''
+  if (!nodeType) selectedMasteryKey.value = ''
+  try {
+    masteryData.value = await fetchTeacherClassMastery(nodeType, nodeId)
+    if (nodeType && nodeId) selectedMasteryKey.value = `${nodeType}:${nodeId}`
+  } catch (cause) {
+    masteryError.value = cause instanceof Error ? cause.message : '知识掌握度加载失败。'
+  } finally {
+    masteryLoading.value = false
+  }
+}
+
+function selectMasteryNode(node: ClassMasteryNode) {
+  selectedMasteryKey.value = masteryKey(node)
+  void loadMastery(node.node_type, node.node_id)
 }
 
 onMounted(() => void load())
@@ -84,6 +153,7 @@ onMounted(() => void load())
       <div class="tabs class-analytics-tabs" role="tablist">
         <button type="button" :class="{ active: activeTab === 'analysis' }" @click="switchTab('analysis')">学习情况分析</button>
         <button type="button" :class="{ active: activeTab === 'details' }" @click="switchTab('details')">作业详情</button>
+        <button type="button" :class="{ active: activeTab === 'mastery' }" @click="switchTab('mastery')">知识掌握度</button>
       </div>
 
       <template v-if="activeTab === 'analysis'">
@@ -141,6 +211,47 @@ onMounted(() => void load())
             <ScoreLineChart :items="classworkAverages" empty-text="暂无课堂测试成绩。" />
           </section>
         </div>
+      </template>
+
+      <template v-else-if="activeTab === 'mastery'">
+        <InlineMessage :message="masteryError" tone="error" />
+        <div v-if="masteryLoading && !masteryData" class="loading-state">正在加载知识掌握度…</div>
+        <template v-else-if="masteryData">
+          <div class="metric-grid class-mastery-metrics">
+            <MetricCard label="课程总体掌握度" :value="masteryData.summary.course_mastery == null ? '—' : masteryData.summary.course_mastery + ' 分'" tone="blue" />
+            <MetricCard label="覆盖学生数" :value="`${masteryData.summary.coverage_student_count} / ${masteryData.class.student_count}`" tone="green" />
+            <MetricCard label="已作答题数" :value="masteryData.summary.answered_question_count" tone="purple" />
+          </div>
+
+          <section class="content-card class-mastery-browser">
+            <div class="section-heading"><div><h3>知识掌握度</h3><p>按课程结构查看当前教学班的掌握情况。</p></div><button class="secondary-button" type="button" :disabled="masteryLoading" @click="loadMastery()">刷新数据</button></div>
+            <div class="class-mastery-browser-grid">
+              <div class="class-mastery-tree" role="tree" aria-label="知识掌握度层级">
+                <button v-for="node in masteryTreeRows" :key="masteryKey(node)" type="button" class="class-mastery-tree-row" :class="[{ selected: selectedMasteryKey === masteryKey(node) }, scoreTone(node.mastery_score)]" :style="{ paddingLeft: `${16 + node.depth * 22}px` }" @click="selectMasteryNode(node)">
+                  <span class="class-mastery-tree-marker">{{ node.node_type === 'point' ? '•' : node.node_type === 'knowledge' ? '◆' : node.node_type === 'theme' ? '▸' : '▣' }}</span>
+                  <span class="class-mastery-tree-title">{{ node.title }}</span>
+                  <small>{{ scoreLabel(node.mastery_score) }}</small>
+                </button>
+                <EmptyState v-if="!masteryTreeRows.length" title="暂无知识节点" description="当前教学班还没有可展示的知识结构。" />
+              </div>
+
+              <div class="class-mastery-detail">
+                <div v-if="selectedMastery" class="class-mastery-detail-content">
+                  <div class="section-heading"><div><span class="mastery-type-label">{{ selectedMastery.node.type_label }}</span><h3>{{ selectedMastery.node.title }}</h3></div><span class="class-mastery-score" :class="scoreTone(selectedMastery.node.mastery_score)">{{ scoreLabel(selectedMastery.node.mastery_score) }}</span></div>
+                  <div class="class-mastery-detail-metrics"><div><span>覆盖学生</span><strong>{{ selectedMastery.node.covered_student_count }} 人</strong></div><div><span>覆盖率</span><strong>{{ selectedMastery.node.coverage_rate }}%</strong></div><div><span>关联题目</span><strong>{{ selectedMastery.node.question_count }} 题</strong></div><div><span>作答次数</span><strong>{{ selectedMastery.node.attempted_count }} 次</strong></div></div>
+                  <div class="class-mastery-distribution"><h4>掌握度分布</h4><div v-for="item in selectedMastery.distribution" :key="item.label" class="class-mastery-distribution-row"><span>{{ item.label }}</span><i><b :style="{ width: `${masteryData.class.student_count ? item.count / masteryData.class.student_count * 100 : 0}%` }" /></i><strong>{{ item.count }} 人</strong></div></div>
+                  <div class="class-mastery-unmastered"><h4>未掌握学生（{{ selectedMastery.unmastered_students.length }}）</h4><div v-if="selectedMastery.unmastered_students.length" class="class-mastery-student-list"><span v-for="item in selectedMastery.unmastered_students" :key="item.username" :class="{ inactive: !item.is_active }">{{ item.name }}（{{ item.username }}）<small>{{ item.score == null ? '暂无记录' : `${item.score} 分` }}</small></span></div><span v-else class="muted">暂无未掌握学生。</span></div>
+                </div>
+                <EmptyState v-else title="选择一个知识节点" description="点击左侧课程结构，查看掌握度分布和未掌握学生。" />
+              </div>
+            </div>
+          </section>
+
+          <div class="class-mastery-ranking-grid">
+            <section class="content-card"><div class="section-heading"><div><h3>薄弱知识点</h3><p>掌握度较低的知识点。</p></div></div><div class="class-mastery-ranking-list"><button v-for="node in masteryData.weak_points" :key="masteryKey(node)" type="button" @click="selectMasteryNode(node)"><span>{{ node.title }}</span><strong class="mastery-danger">{{ scoreLabel(node.mastery_score) }}</strong></button><span v-if="!masteryData.weak_points.length" class="muted">暂无已评分知识点。</span></div></section>
+            <section class="content-card"><div class="section-heading"><div><h3>表现较好的知识点</h3><p>掌握度较高的知识点。</p></div></div><div class="class-mastery-ranking-list"><button v-for="node in masteryData.strong_points" :key="masteryKey(node)" type="button" @click="selectMasteryNode(node)"><span>{{ node.title }}</span><strong class="mastery-excellent">{{ scoreLabel(node.mastery_score) }}</strong></button><span v-if="!masteryData.strong_points.length" class="muted">暂无已评分知识点。</span></div></section>
+          </div>
+        </template>
       </template>
 
       <template v-else>

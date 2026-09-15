@@ -1,26 +1,30 @@
-export interface MasteryKnowledge {
-  id: string
-  title: string
-  score: number
-}
+export type MasteryNodeType = 'class' | 'theme' | 'knowledge' | 'point'
 
-export interface MasteryTheme {
-  id: string
-  title: string
+export interface StudentMasteryNode {
+  graph_node_id: string | null
+  node_type: MasteryNodeType
+  node_id: string
   score: number
-  knowledge: MasteryKnowledge[]
+  accuracy: number
+  attempted_count: number
+  correct_equivalent: number
+  last_answered_at: string
 }
 
 export interface StudentMasteryResponse {
   student: {
     username: string
   }
-  mastery: MasteryTheme[]
+  class_id: string
+  nodes: StudentMasteryNode[]
+  summary: {
+    course_score: number | null
+    attempted_questions: number
+    scored_node_count: number
+  }
   meta: {
-    theme_count: number
-    knowledge_count: number
-    score_scale: [number, number]
     source: string
-    rule: string
+    calculation_version: string
+    score_scale: [number, number]
   }
 }
