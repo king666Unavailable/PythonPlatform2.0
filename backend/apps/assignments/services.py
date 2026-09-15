@@ -27,6 +27,9 @@ class AssignmentUnavailable(RuntimeError):
     """Raised when the formal MySQL assignment store is unavailable."""
 
 
+OBJECTIVE_ANSWER_TYPES = {"1", "2"}
+
+
 def parse_deadline(value: str) -> datetime | None:
     raw = str(value or "").strip()
     if not raw:
@@ -170,6 +173,16 @@ class AssignmentService:
             view_mode = "questions"
         else:
             view_mode = "answer"
+        can_view_answers = False
+        answer_view_message = ""
+        if submission_status in {"grading", "grading_unavailable", "graded"}:
+            if not assignment.get("allow_answer_view"):
+                answer_view_message = "教师尚未开放标准答案。"
+            elif not questions or any(str(question.get("type_code", "")) not in OBJECTIVE_ANSWER_TYPES for question in questions):
+                answer_view_message = "该作业包含编程题，标准答案暂不开放。"
+            else:
+                can_view_answers = True
+                questions = self._resolve_assignment_questions(assignment["id"], include_solution=True)
         return {
             **student_assignment,
             "questions": questions,
@@ -178,6 +191,8 @@ class AssignmentService:
             "makeup_window": selected_window,
             "can_makeup": bool(active_window and self._is_overdue(assignment) and not normal_final),
             "view_mode": view_mode,
+            "can_view_answers": can_view_answers,
+            "answer_view_message": answer_view_message,
             "draft": latest_submission if submission_status == "draft" else None,
             "submission": latest_submission if submission_status != "draft" else None,
         }

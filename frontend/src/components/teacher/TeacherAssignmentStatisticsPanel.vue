@@ -95,7 +95,7 @@ function downloadQuestionPackage() {
           <div class="assignment-question-table-head"><span>序号</span><span>题目名称</span><span>题干内容</span><span>正确答案</span><span>解析</span><span>正确人次</span><span>错误人次</span></div>
           <div v-for="item in questions" :key="item.position" class="assignment-question-table-row">
             <span>{{ item.position + 1 }}</span>
-            <div><strong>{{ item.title }}</strong><small>{{ questionTypeLabel(item.question_type) }}</small></div>
+            <div class="question-stat-title"><strong>{{ item.title }}</strong><small>{{ questionTypeLabel(item.question_type) }}</small></div>
             <p class="question-stat-content">{{ item.content || '—' }}</p>
             <p class="question-stat-content">{{ item.answer || '—' }}</p>
             <p class="question-stat-content">{{ item.analysis || '—' }}</p>

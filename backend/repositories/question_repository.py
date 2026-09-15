@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from django.conf import settings
 
@@ -45,6 +46,7 @@ class Question:
     question_count: int
     correct_question_count: int
     point_titles: tuple[str, ...]
+    programming_config: dict[str, Any] = field(default_factory=dict)
 
     @property
     def type_label(self) -> str:
@@ -75,6 +77,7 @@ class Question:
         if include_solution:
             question["answer"] = self.answer
             question["analysis"] = self.analysis
+            question["programming_config"] = self.programming_config
         return question
 
     def public_summary(self) -> dict:

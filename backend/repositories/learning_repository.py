@@ -49,13 +49,13 @@ class LearningRepository:
             target_usernames = []
         target_usernames = sorted({str(item).strip() for item in target_usernames if str(item).strip()})
         with self.connection.cursor() as cursor:
-            values = (str(assignment.get("title", "未命名作业")), str(assignment.get("deadline", "")), int(assignment.get("time_limit", 0) or 0), str(assignment.get("open_state", "yes")), _json(target_usernames), str(assignment.get("assignment_kind", "homework")), 1 if assignment.get("is_makeup") else 0, 1 if assignment.get("is_mock") else 0, str(assignment.get("status", "published")), _json(question_titles), owner_username or str(assignment.get("owner_username", "")), assignment.get("class_id"))
+            values = (str(assignment.get("title", "未命名作业")), str(assignment.get("deadline", "")), int(assignment.get("time_limit", 0) or 0), str(assignment.get("open_state", "yes")), _json(target_usernames), str(assignment.get("assignment_kind", "homework")), 1 if assignment.get("is_makeup") else 0, 1 if assignment.get("is_mock") else 0, str(assignment.get("status", "published")), 1 if assignment.get("allow_answer_view") else 0, _json(question_titles), owner_username or str(assignment.get("owner_username", "")), assignment.get("class_id"))
             if assignment.get("id") is None:
-                cursor.execute("INSERT INTO assignments (title,deadline,time_limit,open_state,target_usernames_json,assignment_kind,is_makeup,is_mock,status,question_titles_json,owner_username,class_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", values)
+                cursor.execute("INSERT INTO assignments (title,deadline,time_limit,open_state,target_usernames_json,assignment_kind,is_makeup,is_mock,status,allow_answer_view,question_titles_json,owner_username,class_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", values)
                 assignment_id = str(cursor.lastrowid)
             else:
                 assignment_id = str(assignment["id"])
-                cursor.execute("INSERT INTO assignments (id,title,deadline,time_limit,open_state,target_usernames_json,assignment_kind,is_makeup,is_mock,status,question_titles_json,owner_username,class_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE title=VALUES(title),deadline=VALUES(deadline),time_limit=VALUES(time_limit),open_state=VALUES(open_state),target_usernames_json=VALUES(target_usernames_json),assignment_kind=VALUES(assignment_kind),status=VALUES(status),question_titles_json=VALUES(question_titles_json),owner_username=IF(VALUES(owner_username)='',owner_username,VALUES(owner_username)),class_id=VALUES(class_id)", (assignment_id, *values))
+                cursor.execute("INSERT INTO assignments (id,title,deadline,time_limit,open_state,target_usernames_json,assignment_kind,is_makeup,is_mock,status,allow_answer_view,question_titles_json,owner_username,class_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE title=VALUES(title),deadline=VALUES(deadline),time_limit=VALUES(time_limit),open_state=VALUES(open_state),target_usernames_json=VALUES(target_usernames_json),assignment_kind=VALUES(assignment_kind),status=VALUES(status),allow_answer_view=VALUES(allow_answer_view),question_titles_json=VALUES(question_titles_json),owner_username=IF(VALUES(owner_username)='',owner_username,VALUES(owner_username)),class_id=VALUES(class_id)", (assignment_id, *values))
             cursor.execute("DELETE FROM assignment_items WHERE assignment_id=%s", (int(assignment_id),))
             if question_titles:
                 question_items = []
@@ -215,6 +215,7 @@ class LearningRepository:
             "is_makeup": bool(row.get("is_makeup")),
             "is_mock": bool(row.get("is_mock")),
             "status": row.get("status") or "draft",
+            "allow_answer_view": bool(row.get("allow_answer_view")),
             "questions": _loads(row.get("question_titles_json"), []),
             "owner_username": row.get("owner_username") or "",
             "class_id": str(row["class_id"]) if row.get("class_id") is not None else None,
@@ -425,20 +426,22 @@ class LearningRepository:
                     """
                     INSERT INTO submission_grades
                         (submission_id, question_position, score, time_spent_seconds,
-                         status, feedback, provider)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                         status, feedback, provider, grading_details_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE score=VALUES(score), status=VALUES(status),
                         time_spent_seconds=VALUES(time_spent_seconds),
-                        feedback=VALUES(feedback), provider=VALUES(provider)
+                        feedback=VALUES(feedback), provider=VALUES(provider),
+                        grading_details_json=VALUES(grading_details_json)
                     """,
                     (
                         submission_id,
                         int(item.get("position", 0)),
-                        float(item.get("score", 0) or 0),
+                        float(item["score"]) if item.get("score") is not None else None,
                         int(item["time_spent_seconds"]) if item.get("time_spent_seconds") is not None else None,
                         str(item.get("status", "graded")),
                         str(item.get("feedback", "")),
                         str(item.get("provider", "objective")),
+                        _json(item.get("grading_details", {})),
                     ),
                 )
         self.connection.commit()
@@ -455,37 +458,32 @@ class LearningRepository:
             total_questions = int((cursor.fetchone() or {}).get("total_questions") or 0)
             cursor.execute(
                 """
-                SELECT COUNT(*) AS wrong_questions
-                FROM submission_grades
-                WHERE submission_id=%s AND status='graded' AND COALESCE(score, 0) <= 0
-                """,
-                (submission_id,),
-            )
-            wrong_questions = int((cursor.fetchone() or {}).get("wrong_questions") or 0)
-            cursor.execute(
-                """
-                SELECT COUNT(*) AS unsupported_questions
+                SELECT COUNT(DISTINCT question_position) AS graded_questions,
+                       SUM(CASE WHEN status <> 'graded' OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
+                       AVG(CASE WHEN status='graded' THEN score ELSE NULL END) AS average_score
                 FROM submission_grades
                 WHERE submission_id=%s
-                  AND provider NOT IN ('objective', 'legacy_relation')
                 """,
                 (submission_id,),
             )
-            unsupported_questions = int((cursor.fetchone() or {}).get("unsupported_questions") or 0)
-        # Code and other partial-credit policies are intentionally deferred;
-        # do not apply the objective-question formula to them.
-        if unsupported_questions:
+            grade_summary = cursor.fetchone() or {}
+            graded_questions = int(grade_summary.get("graded_questions") or 0)
+            pending_questions = int(grade_summary.get("pending_questions") or 0)
+            average_score = grade_summary.get("average_score")
+        # A result is available only after every assignment question has a
+        # persisted graded row.  Programming questions may contribute a
+        # weighted partial score; objective questions remain 100/0.
+        if pending_questions or graded_questions < total_questions or average_score is None:
             return None
         if total_questions <= 0:
             return None
-        score = 100 - (100 / total_questions * wrong_questions)
-        return round(max(0.0, min(100.0, score)), 2)
+        return round(max(0.0, min(100.0, float(average_score))), 2)
 
     def list_grades(self, submission_id: str) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT question_position, score, time_spent_seconds, status, feedback, provider
+                SELECT question_position, score, time_spent_seconds, status, feedback, provider, grading_details_json
                 FROM submission_grades WHERE submission_id=%s ORDER BY question_position
                 """,
                 (submission_id,),
@@ -494,13 +492,14 @@ class LearningRepository:
         return [
             {
                 "position": int(row["question_position"]),
-                "score": float(row["score"] or 0),
+                "score": float(row["score"]) if row.get("score") is not None else None,
                 "time_spent_seconds": int(row["time_spent_seconds"])
                 if row.get("time_spent_seconds") is not None
                 else None,
                 "status": row["status"],
                 "feedback": row["feedback"] or "",
                 "provider": row["provider"] or "objective",
+                "grading_details": _loads(row.get("grading_details_json"), {}),
             }
             for row in rows
         ]

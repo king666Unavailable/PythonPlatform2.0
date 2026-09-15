@@ -17,6 +17,21 @@ export interface Question extends QuestionSummary {
   content: string
   answer?: string
   analysis?: string
+  programming_config?: {
+    language: string
+    version: string
+    filename: string
+    timeout_ms: number
+    comparison_mode: string
+    test_cases: Array<{
+      case_no: number
+      stdin: string
+      expected_output: string
+      weight: number
+      is_hidden: boolean
+      comparison_mode: string
+    }>
+  }
 }
 
 export interface QuestionListResponse {

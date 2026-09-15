@@ -137,6 +137,24 @@ export function fetchStudentProfile() {
   return request<StudentProfileReport>('/api/v1/student/me')
 }
 
+export interface StudentQuestionnaireResponse {
+  completed: boolean
+  responses: Record<string, unknown>
+  completed_at: string | null
+  updated_at: string | null
+}
+
+export function fetchStudentQuestionnaire() {
+  return request<{ questionnaire: StudentQuestionnaireResponse; completed: boolean }>('/api/v1/student/questionnaire')
+}
+
+export function saveStudentQuestionnaire(responses: Record<string, unknown>) {
+  return request<{ questionnaire: StudentQuestionnaireResponse; completed: boolean }>('/api/v1/student/questionnaire', {
+    method: 'PUT',
+    body: JSON.stringify({ responses }),
+  })
+}
+
 export function fetchStudentMastery() {
   return request<StudentMasteryResponse>('/api/v1/student/me/mastery')
 }
@@ -155,6 +173,32 @@ export function fetchClassAnalytics(classId = 'all') {
 
 export function fetchTeacherStudentProfile(studentId: string) {
   return request<TeacherStudentProfileResponse>(`/api/v1/students/${encodeURIComponent(studentId)}/profile`)
+}
+
+export function fetchTeacherClasses() {
+  return request<{ items: Array<Record<string, unknown>>; meta: Record<string, unknown> }>('/api/v1/teacher/classes')
+}
+
+export function createTeacherClass(payload: Record<string, unknown>) {
+  return request<{ class: Record<string, unknown> }>('/api/v1/teacher/classes/create', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function createTeacherStudent(payload: Record<string, unknown>) {
+  return request<{ created: number; student: Record<string, unknown> }>('/api/v1/teacher/classes/students/create', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function previewTeacherStudentImport(file: File, classId: string) {
+  await ensureCsrfToken()
+  const csrfCookie = document.cookie.split('; ').find((cookie) => cookie.startsWith('csrftoken='))?.split('=')[1]
+  const form = new FormData(); form.append('file', file); form.append('class_id', classId)
+  const response = await fetch('/api/v1/teacher/classes/import/preview', { method: 'POST', body: form, credentials: 'include', headers: csrfCookie ? { 'X-CSRFToken': decodeURIComponent(csrfCookie) } : {} })
+  const payload = await response.json().catch(() => ({})) as ErrorPayload
+  if (!response.ok) throw new ApiError(payload.message ?? 'Excel 解析失败。', response.status, payload.code)
+  return payload as { token: string; class: Record<string, unknown>; rows: Array<Record<string, unknown>>; errors: Array<Record<string, unknown>>; can_import: boolean; meta: Record<string, unknown> }
+}
+
+export function confirmTeacherStudentImport(token: string) {
+  return request<{ created: number; class_id: string }>('/api/v1/teacher/classes/import/confirm', { method: 'POST', body: JSON.stringify({ token }) })
 }
 
 export function fetchKnowledgeGraph() {
@@ -280,6 +324,10 @@ export function deleteKnowledgeNode(nodeId: string) {
 
 export function createQuestion(payload: Record<string, unknown>) {
   return request<{ question: Record<string, unknown> }>('/api/v1/teacher/questions', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function fetchQuestion(questionId: string) {
+  return request<{ question: Record<string, unknown> }>(`/api/v1/questions/${encodeURIComponent(questionId)}`)
 }
 
 export function batchCreateQuestions(questions: Array<Record<string, unknown>>) {

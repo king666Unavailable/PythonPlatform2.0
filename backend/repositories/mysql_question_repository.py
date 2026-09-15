@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
+from domain.programming import normalize_programming_config
+
 from .mysql_connection import create_mysql_connection
 from .question_repository import QUESTION_TYPES, Question, QuestionPage, QuestionQuery
 
@@ -50,6 +55,7 @@ class MySQLQuestionRepository:
             cursor.execute(
                 f"""
                 SELECT q.id, q.title, q.content, q.question_type, q.answer,
+                       q.programming_config_json,
                        q.analysis, q.difficulty, q.importance,
                        q.exam_times, q.homework_times, q.question_count,
                        q.correct_question_count,
@@ -60,7 +66,7 @@ class MySQLQuestionRepository:
                      AND r.source_label='Point' AND r.target_label='Test'
                 LEFT JOIN graph_points p ON p.id=r.source_id
                 WHERE {where}
-                GROUP BY q.id, q.title, q.content, q.question_type, q.answer,
+                GROUP BY q.id, q.title, q.content, q.question_type, q.answer, q.programming_config_json,
                          q.analysis, q.difficulty, q.importance, q.exam_times,
                          q.homework_times, q.question_count, q.correct_question_count
                 ORDER BY LOWER(COALESCE(q.title, '')), q.id
@@ -86,6 +92,7 @@ class MySQLQuestionRepository:
             cursor.execute(
                 f"""
                 SELECT q.id, q.title, q.content, q.question_type, q.answer,
+                       q.programming_config_json,
                        q.analysis, q.difficulty, q.importance,
                        q.exam_times, q.homework_times, q.question_count, q.correct_question_count,
                        GROUP_CONCAT(DISTINCT p.title ORDER BY p.title SEPARATOR '||') AS point_titles
@@ -95,7 +102,7 @@ class MySQLQuestionRepository:
                      AND r.source_label='Point' AND r.target_label='Test'
                 LEFT JOIN graph_points p ON p.id=r.source_id
                 WHERE {condition}
-                GROUP BY q.id, q.title, q.content, q.question_type, q.answer, q.analysis, q.difficulty, q.importance, q.exam_times, q.homework_times, q.question_count, q.correct_question_count
+                GROUP BY q.id, q.title, q.content, q.question_type, q.answer, q.programming_config_json, q.analysis, q.difficulty, q.importance, q.exam_times, q.homework_times, q.question_count, q.correct_question_count
                 LIMIT 1
                 """,
                 (value,),
@@ -116,10 +123,10 @@ class MySQLQuestionRepository:
             cursor.execute(
                 """
                 INSERT INTO graph_questions
-                    (title, content, question_type, answer, analysis, difficulty,
+                    (title, content, question_type, answer, programming_config_json, analysis, difficulty,
                      importance, exam_times, homework_times, question_count,
                      correct_question_count, wrong_times, taught)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0, 0, 0)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0, 0, 0)
                 """,
                 values,
             )
@@ -139,6 +146,8 @@ class MySQLQuestionRepository:
             "type_code": "question_type",
             "content": "content",
             "answer": "answer",
+            "programming_config": "programming_config_json",
+            "programming_config_json": "programming_config_json",
             "analysis": "analysis",
             "difficulty": "difficulty",
             "importance": "importance",
@@ -148,7 +157,10 @@ class MySQLQuestionRepository:
         for key, column in fields.items():
             if key in data:
                 updates.append(f"{column}=%s")
-                params.append(data[key])
+                value = data[key]
+                if column == "programming_config_json":
+                    value = self._dump_programming_config(value)
+                params.append(value)
         if updates:
             with self.connection.cursor() as cursor:
                 cursor.execute(
@@ -185,6 +197,7 @@ class MySQLQuestionRepository:
             str(data.get("content", data.get("Content", "")) or ""),
             str(data.get("type_code", data.get("Type", "1")) or "1"),
             str(data.get("answer", data.get("Answer", "")) or ""),
+            MySQLQuestionRepository._dump_programming_config(data.get("programming_config", data.get("programming_config_json"))),
             str(data.get("analysis", "") or ""),
             decimal_value("difficulty"),
             decimal_value("importance"),
@@ -227,4 +240,18 @@ class MySQLQuestionRepository:
             exam_times=int(row.get("exam_times") or 0), homework_times=int(row.get("homework_times") or 0),
             question_count=int(row.get("question_count") or 0), correct_question_count=int(row.get("correct_question_count") or 0),
             point_titles=points,
+            programming_config=normalize_programming_config(row.get("programming_config_json")),
         )
+
+    @staticmethod
+    def _dump_programming_config(value: Any) -> str | None:
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                return None
+        if not isinstance(value, dict):
+            return None
+        return json.dumps(normalize_programming_config(value), ensure_ascii=False, separators=(",", ":"))

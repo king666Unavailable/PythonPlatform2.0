@@ -16,7 +16,7 @@ const tabs = ['全部', '进行中', '判卷中', '已完成', '已逾期']
 const filtered = computed(() => filter.value === '全部' ? assignments.value : assignments.value.filter((item) => String(item.status) === filter.value))
 
 function actionLabel(status: unknown) {
-  return { 进行中: '去完成', 已完成: '查看结果', 判卷中: '查看答案', 已逾期: '查看题目' }[String(status)] ?? '查看题目'
+  return { 进行中: '去完成', 已完成: '查看结果', 判卷中: '查看结果', 已逾期: '查看题目' }[String(status)] ?? '查看题目'
 }
 
 function timeLimitLabel(value: unknown) {

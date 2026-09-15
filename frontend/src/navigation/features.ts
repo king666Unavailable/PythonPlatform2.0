@@ -39,6 +39,7 @@ const teacherGroups: NavigationGroup[] = [
     items: [
       { id: 'teacher-home', label: '教学概览', icon: 'home', to: '/teacher' },
       { id: 'teacher-class', label: '班级学情', icon: 'class', to: '/teacher/class' },
+      { id: 'teacher-student-import', label: '学生导入', icon: 'account', to: '/teacher/students/import' },
       { id: 'teacher-assignments', label: '作业管理', icon: 'assignment', to: '/teacher/assignments' },
       { id: 'teacher-exams', label: '组卷与考试', icon: 'exam', to: '/teacher/exams' },
     ],

@@ -61,7 +61,14 @@ class GlotClient:
             value = f"http://{value}"
         return value.rstrip("/")
 
-    def run(self, language: str, version: str, files: list[dict[str, str]], stdin: str = "") -> dict[str, Any]:
+    def run(
+        self,
+        language: str,
+        version: str,
+        files: list[dict[str, str]],
+        stdin: str = "",
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
         if not self.endpoint:
             raise GlotNotConfigured("未配置 PISTON_URL")
 
@@ -70,9 +77,11 @@ class GlotClient:
         try:
             runner = _runner_class()("", base_url=self.endpoint, timeout=self.timeout)
             runner.set_lang(safe_language)
+            if safe_version and safe_version.lower() != "latest" and hasattr(runner, "set_version"):
+                runner.set_version(safe_version)
             runner.set_files(files)
             runner.set_stdin(stdin)
-            result = dict(runner.run(timeout=self.timeout))
+            result = dict(runner.run(timeout=timeout_seconds or self.timeout))
             stdout = str(result.get("stdout", "") or "")
             stderr = str(result.get("stderr", "") or "")
             error = str(result.get("error", "") or "")

@@ -16,6 +16,8 @@ interface AssignmentQuestion {
   type: string
   type_code: string
   content: string
+  answer?: string
+  analysis?: string
 }
 
 interface AssignmentDetail {
@@ -27,6 +29,8 @@ interface AssignmentDetail {
   view_mode?: 'answer' | 'result' | 'answers' | 'questions'
   submission_mode?: 'normal' | 'makeup'
   makeup_window_id?: string | null
+  can_view_answers?: boolean
+  answer_view_message?: string
   draft?: { answers?: Record<string, unknown> | unknown[]; time_spent?: Record<string, unknown> }
   submission?: { answers?: Record<string, unknown> | unknown[]; time_spent?: Record<string, unknown>; score?: number | null; status?: string; grades?: Array<Record<string, unknown>> }
 }
@@ -65,12 +69,17 @@ const viewMode = computed(() => assignment.value?.view_mode ?? 'answer')
 const isReadOnly = computed(() => viewMode.value !== 'answer')
 const showOwnAnswers = computed(() => viewMode.value === 'result' || viewMode.value === 'answers')
 const onlyQuestions = computed(() => viewMode.value === 'questions')
-const pageDescription = computed(() => ({
-  answer: '按题号完成作答，答案会自动保存。',
-  result: '查看本次作业的得分和你的答案。标准答案不对学生开放。',
-  answers: '查看你已提交的答案，判卷完成后会更新结果。标准答案不对学生开放。',
-  questions: '查看作业题目。该作业已逾期，当前仅开放题目内容。',
-}[viewMode.value] ?? '查看作业内容。'))
+const canViewStandardAnswers = computed(() => Boolean(assignment.value?.can_view_answers))
+const answerViewMessage = computed(() => assignment.value?.answer_view_message || '')
+const pageDescription = computed(() => {
+  const standardAnswerHint = canViewStandardAnswers.value ? '本页包含标准答案和解析。' : answerViewMessage.value || '标准答案暂不开放。'
+  return ({
+    answer: '按题号完成作答，答案会自动保存。',
+    result: '查看本次作业的得分和你的答案。' + standardAnswerHint,
+    answers: '查看你已提交的答案。' + standardAnswerHint,
+    questions: '查看作业题目。该作业已逾期，当前仅开放题目内容。',
+  }[viewMode.value] ?? '查看作业内容。')
+})
 
 function updateQuestionScrollHint() {
   const element = questionStatementRef.value
@@ -308,13 +317,13 @@ onBeforeUnmount(() => {
         <div v-if="viewMode === 'result'" class="assignment-score"><span>本次得分</span><strong>{{ assignment.submission?.score ?? '待更新' }}<small v-if="assignment.submission?.score !== null && assignment.submission?.score !== undefined"> 分</small></strong></div>
       </aside>
       <section class="answer-main content-card" :class="{ 'wrong-question-card': isWrong(currentQuestion) }">
-        <div class="answer-main-header"><div><div class="question-meta"><span class="question-counter">第 {{ activeIndex + 1 }} 题 / 共 {{ assignment.questions.length }} 题</span><span v-if="!isReadOnly" class="question-timer">本题用时 {{ formatDuration(currentQuestionTime) }}</span></div><h3>{{ currentQuestion?.title }}</h3></div><StatusBadge class="question-type-badge" :label="currentQuestion?.type || '题目'" tone="blue" /></div>
+        <div class="answer-main-header"><div><div class="question-meta"><span class="question-counter">第 {{ activeIndex + 1 }} 题 / 共 {{ assignment.questions.length }} 题</span><span v-if="!isReadOnly" class="question-timer">本题用时 {{ formatDuration(currentQuestionTime) }}</span></div><h3>{{ currentQuestion?.title }}</h3></div><StatusBadge class="question-type-badge" :label="currentQuestion?.type || '题目'" tone="blue" /></div><InlineMessage v-if="showOwnAnswers && !canViewStandardAnswers && answerViewMessage" :message="answerViewMessage" tone="info" />
         <div v-if="currentQuestion" class="answer-content">
           <div class="question-statement-wrap">
             <div ref="questionStatementRef" class="question-statement" @scroll="updateQuestionScrollHint">{{ currentQuestion.content || '暂无题干' }}</div>
             <button v-if="showQuestionScrollHint" class="question-scroll-arrow" type="button" aria-label="下滑查看完整题目" title="下滑查看完整题目" @click="scrollQuestionToBottom">↓</button>
           </div>
-          <div v-if="showOwnAnswers" class="answer-review"><span>你的答案</span><strong>{{ answerFor(currentQuestion) || '未作答' }}</strong></div>
+          <div v-if="showOwnAnswers"><div class="answer-review"><span>你的答案</span><strong>{{ answerFor(currentQuestion) || '未作答' }}</strong></div><div v-if="canViewStandardAnswers" class="standard-answer-review"><div class="standard-answer-row"><span>标准答案</span><strong>{{ currentQuestion.answer || '暂无标准答案' }}</strong></div><div class="standard-answer-analysis"><span>解析</span><p>{{ currentQuestion.analysis || '暂无解析' }}</p></div></div></div>
           <div v-else-if="onlyQuestions" class="question-only-note">当前为仅查看题目模式，不显示作答内容。</div>
           <div v-else-if="currentQuestion.type_code === '1'" class="choice-list">
             <label v-for="option in choiceOptions(currentQuestion)" :key="option.label" class="choice-option" :class="{ checked: answerFor(currentQuestion) === option.label }"><input type="radio" :name="`question-${currentQuestion.position}`" :value="option.label" :checked="answerFor(currentQuestion) === option.label" @change="setAnswer(currentQuestion, option.label)" /><b>{{ option.label }}</b><span>{{ option.text }}</span></label>

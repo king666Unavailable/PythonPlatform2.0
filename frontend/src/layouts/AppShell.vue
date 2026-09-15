@@ -2,7 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { fetchStudentQuestionnaire } from '@/api/client'
 import AppIcon from '@/components/navigation/AppIcon.vue'
+import StudentQuestionnaireModal from '@/components/student/StudentQuestionnaireModal.vue'
 import { useClassContext } from '@/stores/classContext'
 import { useNavigationStore } from '@/stores/navigation'
 
@@ -20,9 +22,30 @@ const roleLabel = computed(() => user.value ? roleLabels[user.value.role] : '')
 const classContext = useClassContext()
 const classOptions = computed(() => classContext.items.value)
 const currentClassId = computed(() => classContext.current.value?.id ?? '')
+const currentTeachingClass = computed(() => classContext.current.value?.teaching_class ?? '')
 const studentClassChecking = computed(() => user.value?.role === 'student' && !classContext.ready.value)
 const studentHasNoClass = computed(() => user.value?.role === 'student' && classContext.ready.value && !classContext.loading.value && !classOptions.value.length && !classContext.error.value)
 const studentClassLoadFailed = computed(() => user.value?.role === 'student' && classContext.ready.value && !classContext.loading.value && Boolean(classContext.error.value))
+const questionnaireOpen = ref(false)
+const questionnaireCompleted = ref(true)
+
+async function bootstrapQuestionnaire(username: string) {
+  questionnaireOpen.value = false
+  questionnaireCompleted.value = true
+  try {
+    const result = await fetchStudentQuestionnaire()
+    if (user.value?.username !== username || user.value.role !== 'student') return
+    questionnaireCompleted.value = result.completed
+    if (!result.completed) questionnaireOpen.value = true
+  } catch {
+    // 问卷服务异常时不阻断学生进入教学系统，入口保持静默。
+  }
+}
+
+function openQuestionnaire() {
+  profileMenuOpen.value = false
+  questionnaireOpen.value = true
+}
 
 async function handleClassChange(event: Event) {
   const value = (event.target as HTMLSelectElement).value
@@ -34,9 +57,12 @@ watch(() => user.value?.username, (username) => {
     void classContext.bootstrap(username)
     if (user.value.role === 'admin') navigation.clear()
     else void navigation.bootstrap(user.value.role)
+    if (user.value.role === 'student') void bootstrapQuestionnaire(username)
+    else questionnaireOpen.value = false
   } else {
     classContext.clear()
     navigation.clear()
+    questionnaireOpen.value = false
   }
 }, { immediate: true })
 
@@ -69,6 +95,6 @@ onBeforeUnmount(() => document.removeEventListener('click', handleDocumentClick)
       <div v-if="user" class="sidebar-user"><span class="sidebar-avatar">{{ user.name.slice(0, 1) }}</span><div class="sidebar-user-info"><strong>{{ user.name }}</strong><span>{{ roleLabel }}</span></div><label v-if="classOptions.length" class="sidebar-class-switcher"><span>当前教学班</span><select :value="currentClassId" :disabled="classContext.loading.value" @change="handleClassChange"><option v-for="item in classOptions" :key="item.id" :value="item.id">{{ item.teaching_class || item.title }}<template v-if="item.academic_year"> · {{ item.academic_year }}</template></option></select></label></div>
       <nav class="sidebar-nav" aria-label="主导航"><section v-for="group in groups" :key="group.label" class="nav-group"><h2>{{ group.label }}</h2><RouterLink v-for="item in group.items" :key="item.id" :to="item.to" class="nav-item" :class="{ active: isActive(item.to) }" @click="mobileOpen = false"><AppIcon :name="item.icon" /><span>{{ item.label }}</span></RouterLink></section></nav>
     </aside>
-    <div class="app-main"><header class="topbar"><button class="mobile-menu-button" type="button" aria-label="打开导航" @click="mobileOpen = true">☰</button><div><p class="topbar-kicker">Python辅助教学平台</p><h1>{{ pageTitle }}</h1></div><div v-if="user" class="topbar-user"><button class="topbar-profile-button" type="button" aria-haspopup="menu" :aria-expanded="profileMenuOpen" @click.stop="profileMenuOpen = !profileMenuOpen"><span class="topbar-avatar">{{ user.name.slice(0, 1) }}</span><span class="topbar-user-name">{{ user.name }}</span><span class="profile-chevron" aria-hidden="true">⌄</span></button><div v-if="profileMenuOpen" class="profile-menu" role="menu"><div class="profile-menu-heading"><strong>{{ user.name }}</strong><span>{{ roleLabel }}</span></div><RouterLink v-if="user.role === 'student'" class="profile-menu-link" to="/password-change" role="menuitem" @click="profileMenuOpen = false">修改密码</RouterLink><button class="profile-menu-item" type="button" role="menuitem" @click="signOut">退出登录</button></div></div></header><main class="content-area"><section v-if="studentClassChecking" class="student-class-state content-card"><strong>正在检查可用教学班…</strong></section><section v-else-if="studentHasNoClass" class="student-class-state content-card"><strong>当前没有可用教学班，请联系管理员</strong></section><section v-else-if="studentClassLoadFailed" class="student-class-state content-card"><strong>教学班信息暂不可用，请稍后重试</strong><span>{{ classContext.error.value }}</span></section><RouterView v-else /></main></div>
+    <div class="app-main"><header class="topbar"><button class="mobile-menu-button" type="button" aria-label="打开导航" @click="mobileOpen = true">☰</button><div><p class="topbar-kicker">Python辅助教学平台</p><h1>{{ pageTitle }}</h1></div><div v-if="user" class="topbar-user"><button v-if="user.role === 'student'" class="questionnaire-trigger" :class="{ active: !questionnaireCompleted }" type="button" :aria-label="questionnaireCompleted ? '修改学习信息问卷' : '完成学习信息问卷'" :title="questionnaireCompleted ? '修改学习信息问卷' : '请完成学习信息问卷'" @click.stop="openQuestionnaire"><span class="questionnaire-trigger-icon" aria-hidden="true">✦</span><span class="questionnaire-trigger-label">问卷</span></button><button class="topbar-profile-button" type="button" aria-haspopup="menu" :aria-expanded="profileMenuOpen" @click.stop="profileMenuOpen = !profileMenuOpen"><span class="topbar-avatar">{{ user.name.slice(0, 1) }}</span><span class="topbar-user-name">{{ user.name }}</span><span class="profile-chevron" aria-hidden="true">⌄</span></button><div v-if="profileMenuOpen" class="profile-menu" role="menu"><div class="profile-menu-heading"><strong>{{ user.name }}</strong><span>{{ roleLabel }}</span></div><RouterLink v-if="user.role === 'student'" class="profile-menu-link" to="/password-change" role="menuitem" @click="profileMenuOpen = false">修改密码</RouterLink><button class="profile-menu-item" type="button" role="menuitem" @click="signOut">退出登录</button></div></div></header><StudentQuestionnaireModal v-if="user?.role === 'student' && user" :open="questionnaireOpen" :user="user" :teaching-class="currentTeachingClass" @close="questionnaireOpen = false" @saved="questionnaireCompleted = true" /><main class="content-area"><section v-if="studentClassChecking" class="student-class-state content-card"><strong>正在检查可用教学班…</strong></section><section v-else-if="studentHasNoClass" class="student-class-state content-card"><strong>当前没有可用教学班，请联系管理员</strong></section><section v-else-if="studentClassLoadFailed" class="student-class-state content-card"><strong>教学班信息暂不可用，请稍后重试</strong><span>{{ classContext.error.value }}</span></section><RouterView v-else /></main></div>
   </div>
 </template>

@@ -34,6 +34,11 @@ async function bootstrap(userKey = '') {
   }
 }
 
+async function refresh(userKey = lastUser) {
+  ready.value = false
+  await bootstrap(userKey)
+}
+
 async function select(classId: string) {
   loading.value = true
   try {
@@ -57,5 +62,5 @@ function clear() {
 }
 
 export function useClassContext() {
-  return { items, current, loading, ready, error, bootstrap, select, clear }
+  return { items, current, loading, ready, error, bootstrap, refresh, select, clear }
 }

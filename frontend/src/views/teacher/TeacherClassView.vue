@@ -74,7 +74,7 @@ onMounted(() => void load())
   <div class="page-stack">
     <PageHeader title="班级学情" description="查看班级整体趋势，并下钻到需要关注的学生。">
       <template #actions>
-        <button type="button" :disabled="loading" @click="load">刷新数据</button>
+        <button class="secondary-button" type="button" :disabled="loading" @click="load">刷新数据</button>
       </template>
     </PageHeader>
     <InlineMessage :message="error" tone="error" />

@@ -11,3 +11,4 @@ scripts/
 *.log
 glotio.py
 test_piston.py
+database/python_platform_demo.sql

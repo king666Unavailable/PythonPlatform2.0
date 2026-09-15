@@ -53,11 +53,21 @@ CREATE TABLE IF NOT EXISTS `user_students` (
   UNIQUE KEY `uq_user_students_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `student_questionnaires` (
+  `student_username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `responses_json` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `is_completed` tinyint(1) NOT NULL DEFAULT '0',
+  `completed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`student_username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `classes` (
   `title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `teaching_class` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `academic_year` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
-  `id` bigint unsigned NOT NULL,
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `teacher_name` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
@@ -162,6 +172,7 @@ CREATE TABLE IF NOT EXISTS `graph_questions` (
   `content` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `question_type` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `answer` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
+  `programming_config_json` longtext COLLATE utf8mb4_unicode_ci,
   `analysis` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `difficulty` decimal(10,2) DEFAULT NULL,
   `importance` decimal(10,2) DEFAULT NULL,
@@ -230,6 +241,7 @@ CREATE TABLE IF NOT EXISTS `assignments` (
   `is_makeup` tinyint(1) NOT NULL DEFAULT '0',
   `is_mock` tinyint(1) NOT NULL DEFAULT '0',
   `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'draft',
+  `allow_answer_view` tinyint(1) NOT NULL DEFAULT '0',
   `question_titles_json` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
   `owner_username` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `class_id` bigint unsigned DEFAULT NULL,
@@ -318,6 +330,7 @@ CREATE TABLE IF NOT EXISTS `submission_grades` (
   `status` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'graded',
   `feedback` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `provider` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'objective',
+  `grading_details_json` longtext COLLATE utf8mb4_unicode_ci,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

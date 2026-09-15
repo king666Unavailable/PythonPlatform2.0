@@ -62,12 +62,38 @@ class PistonClientTests(SimpleTestCase):
 
 
 class SubmissionScoringTests(SimpleTestCase):
-    def test_code_question_is_not_auto_graded(self):
+    def test_code_question_without_cases_is_pending_configuration(self):
         result = ScoringService().grade(
-            [{"type_code": "3", "answer": '[{"expected_output":"ok"}]'}],
+            [{"type_code": "3", "answer": ""}],
             {"0": "print('ok')"},
         )
 
-        self.assertEqual(result["status"], "grading_unavailable")
-        self.assertEqual(result["items"][0]["status"], "pending")
-        self.assertEqual(result["items"][0]["provider"], "code_runner")
+        self.assertEqual(result["status"], "grading")
+        self.assertEqual(result["score"], None)
+        self.assertEqual(result["items"][0]["status"], "pending_test_cases")
+        self.assertEqual(result["items"][0]["provider"], "piston")
+
+    @patch("domain.scoring.GlotClient.run")
+    def test_code_question_uses_weighted_piston_results(self, run):
+        run.side_effect = [
+            {"stdout": "3\n", "stderr": "", "error": "", "executionTime": 4},
+            {"stdout": "wrong\n", "stderr": "", "error": "", "executionTime": 5},
+        ]
+        result = ScoringService().grade(
+            [{
+                "type_code": "3",
+                "programming_config": {
+                    "language": "python", "version": "3.12", "filename": "main.py",
+                    "test_cases": [
+                        {"stdin": "", "expected_output": "3", "weight": 2},
+                        {"stdin": "", "expected_output": "4", "weight": 1},
+                    ],
+                },
+            }],
+            {"0": "print(1+2)"},
+        )
+
+        self.assertEqual(result["status"], "graded")
+        self.assertEqual(result["score"], 66.67)
+        self.assertEqual(result["items"][0]["status"], "graded")
+        self.assertEqual(result["items"][0]["score"], 66.67)
