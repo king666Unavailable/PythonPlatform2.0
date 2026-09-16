@@ -78,6 +78,22 @@ class Question:
             question["answer"] = self.answer
             question["analysis"] = self.analysis
             question["programming_config"] = self.programming_config
+        else:
+            # Students need the entry contract (execution mode and function
+            # name) to answer function questions, but never the test cases or
+            # expected values.
+            mode = self.programming_config.get("execution_mode")
+            if mode in {"function", "wrapped_body"}:
+                submission = {
+                    "execution_mode": mode,
+                    "function_name": self.programming_config.get("function_name") or "",
+                }
+                if mode == "wrapped_body":
+                    # The snippet contract: students must know the available
+                    # parameter names and the required result variable.
+                    submission["parameter_names"] = list(self.programming_config.get("parameter_names") or [])
+                    submission["return_variable"] = self.programming_config.get("return_variable") or ""
+                question["programming_submission"] = submission
         return question
 
     def public_summary(self) -> dict:

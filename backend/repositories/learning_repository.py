@@ -436,7 +436,10 @@ class LearningRepository:
                     (
                         submission_id,
                         int(item.get("position", 0)),
-                        float(item["score"]) if item.get("score") is not None else None,
+                        # The demo schema declares submission_grades.score NOT
+                        # NULL, and read-time aggregation only averages rows
+                        # with status='graded', so missing scores persist as 0.
+                        float(item["score"]) if item.get("score") is not None else 0.0,
                         int(item["time_spent_seconds"]) if item.get("time_spent_seconds") is not None else None,
                         str(item.get("status", "graded")),
                         str(item.get("feedback", "")),

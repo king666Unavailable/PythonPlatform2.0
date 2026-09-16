@@ -18,6 +18,12 @@ interface AssignmentQuestion {
   content: string
   answer?: string
   analysis?: string
+  programming_submission?: {
+    execution_mode?: string
+    function_name?: string
+    parameter_names?: string[]
+    return_variable?: string
+  }
 }
 
 interface AssignmentDetail {
@@ -59,6 +65,22 @@ let timingLastTick = 0
 let hydrated = false
 
 const currentQuestion = computed(() => assignment.value?.questions[activeIndex.value] ?? null)
+const programmingHint = computed(() => {
+  const submission = currentQuestion.value?.programming_submission
+  const mode = submission?.execution_mode
+  const functionName = submission?.function_name?.trim()
+  if (mode === 'function' && functionName) {
+    return `本题按函数调用判卷：请完整实现函数 ${functionName}(...)，函数名需保持一致，判卷器会用多组参数自动调用它。`
+  }
+  if (mode === 'wrapped_body') {
+    const params = (submission?.parameter_names ?? []).filter(Boolean)
+    const returnVariable = submission?.return_variable?.trim()
+    const paramNote = params.length ? `可直接使用参数变量 ${params.join('、')}；` : ''
+    const variableNote = returnVariable ? `请把最终结果赋值给变量 ${returnVariable}。` : '请按要求计算结果。'
+    return `本题按代码片段判卷：只需编写函数体代码，不要写 def ${functionName || '函数'} 行和 return 语句。${paramNote}${variableNote}`
+  }
+  return ''
+})
 const answeredCount = computed(() => Object.values(answers).filter((answer) => answer.trim()).length)
 const currentQuestionTime = computed(() => {
   const position = currentQuestion.value?.position
@@ -329,7 +351,7 @@ onBeforeUnmount(() => {
             <label v-for="option in choiceOptions(currentQuestion)" :key="option.label" class="choice-option" :class="{ checked: answerFor(currentQuestion) === option.label }"><input type="radio" :name="`question-${currentQuestion.position}`" :value="option.label" :checked="answerFor(currentQuestion) === option.label" @change="setAnswer(currentQuestion, option.label)" /><b>{{ option.label }}</b><span>{{ option.text }}</span></label>
           </div>
           <label v-else-if="currentQuestion.type_code === '2'" class="answer-field">你的答案<input :value="answerFor(currentQuestion)" placeholder="请输入答案" @input="setAnswer(currentQuestion, ($event.target as HTMLInputElement).value)" /></label>
-          <div v-else-if="['3', '4'].includes(currentQuestion.type_code)" class="code-answer"><div class="code-editor-field"><span>代码编辑器</span><CodeEditor :model-value="answerFor(currentQuestion)" placeholder="在这里编写 Python 代码" @update:model-value="setAnswer(currentQuestion, $event)" /></div><div class="code-actions"><button class="secondary-button" type="button" :disabled="submitting || codeRunning" @click="runQuestion(currentQuestion)">{{ codeRunning ? '运行中…' : '运行代码' }}</button><span>运行结果仅用于预览，不会自动判卷或计入成绩。</span></div><InlineMessage :message="codeRunError" tone="error" /><div v-if="codeOutputs[currentQuestion.id]" class="code-output"><div class="code-output-header"><strong>{{ codeOutputs[currentQuestion.id].status === 'completed' ? '运行完成' : '运行失败' }}</strong><span v-if="codeOutputs[currentQuestion.id].executionTime">耗时 {{ codeOutputs[currentQuestion.id].executionTime }} ms</span></div><pre v-if="codeOutputs[currentQuestion.id].stdout">{{ codeOutputs[currentQuestion.id].stdout }}</pre><pre v-if="codeOutputs[currentQuestion.id].stderr" class="code-output-error">{{ codeOutputs[currentQuestion.id].stderr }}</pre><pre v-if="codeOutputs[currentQuestion.id].error" class="code-output-error">{{ codeOutputs[currentQuestion.id].error }}</pre><span v-if="!codeOutputs[currentQuestion.id].stdout && !codeOutputs[currentQuestion.id].stderr && !codeOutputs[currentQuestion.id].error">程序运行完成，没有输出。</span></div></div>
+          <div v-else-if="['3', '4'].includes(currentQuestion.type_code)" class="code-answer"><InlineMessage v-if="programmingHint" :message="programmingHint" tone="info" /><div class="code-editor-field"><span>代码编辑器</span><CodeEditor :model-value="answerFor(currentQuestion)" placeholder="在这里编写 Python 代码" @update:model-value="setAnswer(currentQuestion, $event)" /></div><div class="code-actions"><button class="secondary-button" type="button" :disabled="submitting || codeRunning" @click="runQuestion(currentQuestion)">{{ codeRunning ? '运行中…' : '运行代码' }}</button><span>运行结果仅用于预览，不会自动判卷或计入成绩。</span></div><InlineMessage :message="codeRunError" tone="error" /><div v-if="codeOutputs[currentQuestion.id]" class="code-output"><div class="code-output-header"><strong>{{ codeOutputs[currentQuestion.id].status === 'completed' ? '运行完成' : '运行失败' }}</strong><span v-if="codeOutputs[currentQuestion.id].executionTime">耗时 {{ codeOutputs[currentQuestion.id].executionTime }} ms</span></div><pre v-if="codeOutputs[currentQuestion.id].stdout">{{ codeOutputs[currentQuestion.id].stdout }}</pre><pre v-if="codeOutputs[currentQuestion.id].stderr" class="code-output-error">{{ codeOutputs[currentQuestion.id].stderr }}</pre><pre v-if="codeOutputs[currentQuestion.id].error" class="code-output-error">{{ codeOutputs[currentQuestion.id].error }}</pre><span v-if="!codeOutputs[currentQuestion.id].stdout && !codeOutputs[currentQuestion.id].stderr && !codeOutputs[currentQuestion.id].error">程序运行完成，没有输出。</span></div></div>
           <label v-else class="answer-field">你的答案<textarea :value="answerFor(currentQuestion)" rows="7" placeholder="请输入答案" @input="setAnswer(currentQuestion, ($event.target as HTMLTextAreaElement).value)" /></label>
         </div>
         <div class="answer-footer"><span class="save-state">{{ saveState }}</span><div class="answer-actions"><button class="secondary-button" type="button" :disabled="activeIndex === 0" @click="activeIndex -= 1">上一题</button><button v-if="activeIndex < assignment.questions.length - 1" type="button" @click="activeIndex += 1">下一题</button><button v-else-if="!isReadOnly" type="button" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交作业' }}</button><span v-else class="read-only-hint">{{ onlyQuestions ? '仅查看题目' : viewMode === 'result' ? '已完成 · 只读' : '判卷中 · 只读' }}</span></div></div>
