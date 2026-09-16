@@ -83,8 +83,12 @@ STUDENT2_ANSWERS = {
 
 def db():
     return pymysql.connect(
-        host="127.0.0.1", port=3306, user="platform", password="platform123",
-        database="python_platform_demo", charset="utf8mb4",
+        host=os.environ["PYTHONPLATFORM_MYSQL_HOST"],
+        port=int(os.environ["PYTHONPLATFORM_MYSQL_PORT"]),
+        user=os.environ["PYTHONPLATFORM_MYSQL_USER"],
+        password=os.environ["PYTHONPLATFORM_MYSQL_PASSWORD"],
+        database=os.environ["PYTHONPLATFORM_MYSQL_DATABASE"],
+        charset="utf8mb4",
         cursorclass=pymysql.cursors.DictCursor, autocommit=True,
     )
 
