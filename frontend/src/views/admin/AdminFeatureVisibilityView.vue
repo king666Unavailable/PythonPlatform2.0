@@ -18,7 +18,7 @@ const roleLabel: Record<ConfigRole, string> = { student: '学生端', teacher: '
 const currentItems = computed(() => roleItems.value[selectedRole.value])
 const groups = computed(() => {
   const result: Array<{ label: string; items: NavigationVisibilityItem[] }> = []
-  for (const item of currentItems.value) {
+  for (const item of [...currentItems.value].sort((left, right) => left.sort_order - right.sort_order)) {
     let group = result.find((candidate) => candidate.label === item.group)
     if (!group) { group = { label: item.group, items: [] }; result.push(group) }
     group.items.push(item)
@@ -48,14 +48,36 @@ async function save() {
   error.value = ''
   success.value = ''
   try {
-    const result = await updateAdminNavigationSettings(selectedRole.value, currentItems.value.map((item) => ({ id: item.id, is_visible: item.is_visible })))
+    const orderedItems = groups.value.flatMap((group) => group.items)
+    const result = await updateAdminNavigationSettings(selectedRole.value, orderedItems.map((item, index) => ({
+      id: item.id,
+      is_visible: item.is_visible,
+      sort_order: index + 1,
+    })))
     roleItems.value[selectedRole.value] = result.items
-    success.value = `${roleLabel[selectedRole.value]}功能显示配置已保存。`
+    success.value = `${roleLabel[selectedRole.value]}导航顺序及显示配置已保存。`
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '功能配置保存失败。'
   } finally {
     saving.value = false
   }
+}
+
+function moveItem(itemId: string, direction: -1 | 1) {
+  const item = currentItems.value.find((candidate) => candidate.id === itemId)
+  if (!item) return
+  const siblings = currentItems.value
+    .filter((candidate) => candidate.group === item.group)
+    .sort((left, right) => left.sort_order - right.sort_order)
+  const index = siblings.findIndex((candidate) => candidate.id === itemId)
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= siblings.length) return
+
+  const orderSlots = siblings.map((candidate) => candidate.sort_order)
+  ;[siblings[index], siblings[targetIndex]] = [siblings[targetIndex], siblings[index]]
+  siblings.forEach((candidate, siblingIndex) => { candidate.sort_order = orderSlots[siblingIndex] })
+  error.value = ''
+  success.value = ''
 }
 
 function switchRole(role: ConfigRole) {
@@ -79,15 +101,19 @@ onMounted(() => void load())
       </div>
       <div v-if="loading" class="loading-state">正在加载功能配置…</div>
       <template v-else>
-        <div class="feature-visibility-heading"><div><h3>{{ roleLabel[selectedRole] }}导航功能</h3><p>关闭后，该功能不会显示在导航栏，也不能通过地址直接访问。</p></div><button type="button" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
+        <div class="feature-visibility-heading"><div><h3>{{ roleLabel[selectedRole] }}导航功能</h3><p>使用上下按钮调整同一导航分组内的顺序；隐藏页签仍保留位置。保存后刷新对应角色页面生效。</p></div><button type="button" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button></div>
         <div class="feature-setting-groups">
           <section v-for="group in groups" :key="group.label" class="feature-setting-group">
             <h4>{{ group.label }}</h4>
-            <label v-for="item in group.items" :key="item.id" class="feature-setting-option">
-              <input v-model="item.is_visible" type="checkbox" />
-              <span><strong>{{ item.label }}</strong><small>{{ item.path }}</small></span>
+            <div v-for="(item, index) in group.items" :key="item.id" class="feature-setting-option">
+              <input :id="`feature-${item.id}`" v-model="item.is_visible" type="checkbox" />
+              <span><label :for="`feature-${item.id}`"><strong>{{ item.label }}</strong></label><small>{{ item.path }}</small></span>
               <em :class="item.is_visible ? 'is-on' : 'is-off'">{{ item.is_visible ? '显示' : '隐藏' }}</em>
-            </label>
+              <div class="feature-setting-order-controls" :aria-label="`${item.label}排序`">
+                <button type="button" title="上移" :aria-label="`${item.label}上移`" :disabled="saving || index === 0" @click="moveItem(item.id, -1)">↑</button>
+                <button type="button" title="下移" :aria-label="`${item.label}下移`" :disabled="saving || index === group.items.length - 1" @click="moveItem(item.id, 1)">↓</button>
+              </div>
+            </div>
           </section>
         </div>
       </template>

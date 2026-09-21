@@ -14,6 +14,7 @@ import StudentLearningProfileView from '@/views/student/StudentLearningProfileVi
 import TeacherHomeView from '@/views/teacher/TeacherHomeView.vue'
 import TeacherClassView from '@/views/teacher/TeacherClassView.vue'
 import TeacherStudentImportView from '@/views/teacher/TeacherStudentImportView.vue'
+import TeacherStudentAuditView from '@/views/teacher/TeacherStudentAuditView.vue'
 import TeacherAssignmentsView from '@/views/teacher/TeacherAssignmentsView.vue'
 import TeacherAssignmentStatisticsView from '@/views/teacher/TeacherAssignmentStatisticsView.vue'
 import TeacherMakeupWindowsView from '@/views/teacher/TeacherMakeupWindowsView.vue'
@@ -57,6 +58,7 @@ const routes = [
       { path: 'teacher', name: 'teacher-home', component: TeacherHomeView, meta: { roles: ['teacher'], featureId: 'teacher-home', title: '教学概览' } },
       { path: 'teacher/class', name: 'teacher-class', component: TeacherClassView, meta: { roles: ['teacher'], featureId: 'teacher-class', title: '班级学情' } },
       { path: 'teacher/students/import', name: 'teacher-student-import', component: TeacherStudentImportView, meta: { roles: ['teacher'], featureId: 'teacher-student-import', title: '学生导入' } },
+      { path: 'teacher/student-audit', name: 'teacher-student-audit', component: TeacherStudentAuditView, meta: { roles: ['teacher'], featureId: 'teacher-student-audit', title: '学生操作记录' } },
       { path: 'teacher/assignments', name: 'teacher-assignments', component: TeacherAssignmentsView, meta: { roles: ['teacher'], featureId: 'teacher-assignments', title: '作业管理' } },
       { path: 'teacher/assignments/:id/statistics', name: 'teacher-assignment-statistics', component: TeacherAssignmentStatisticsView, meta: { roles: ['teacher'], featureId: 'teacher-assignments', title: '作业统计' } },
       { path: 'teacher/assignments/:id/makeup-windows', name: 'teacher-assignment-makeups', component: TeacherMakeupWindowsView, meta: { roles: ['teacher'], featureId: 'teacher-assignments', title: '补交设置' } },

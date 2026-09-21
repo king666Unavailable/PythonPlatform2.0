@@ -1,6 +1,7 @@
 """Administrator account, permission and audit APIs (F24/F25)."""
 
 import uuid
+from datetime import datetime, timedelta
 
 from openpyxl import load_workbook
 
@@ -39,6 +40,27 @@ def _accounts(repository: MySQLUserRepository, role: str):
     if role == "student":
         return repository.list_students()
     return repository.list_admins() + repository.list_teachers() + repository.list_students()
+
+
+def _account_snapshot(repository: MySQLUserRepository, role: str, username: str) -> dict | None:
+    return next((item for item in _accounts(repository, role) if item.get("username") == username), None)
+
+
+def _class_audit_names(class_ids: list[str]) -> list[str]:
+    if not class_ids:
+        return []
+    with AdminClassRepository() as repository:
+        classes = {item["id"]: item for item in repository.list_classes()}
+    names = []
+    for class_id in class_ids:
+        item = classes.get(str(class_id))
+        if not item:
+            continue
+        label = " / ".join(value for value in (item.get("title"), item.get("teaching_class")) if value)
+        if item.get("academic_year"):
+            label = f"{label}（{item['academic_year']}）"
+        names.append(label or str(class_id))
+    return names
 
 
 @api_view(["GET"])
@@ -178,26 +200,38 @@ def update_account(request, role: str, username: str):
             return _error("部分教学班无效或已停用，未保存这些关系。", "CLASS_INVALID", status.HTTP_400_BAD_REQUEST)
 
     updated_fields: list[str] = []
+    changes: list[dict] = []
+    before: dict = {}
     with MySQLUserRepository() as repository:
         if not repository.account_exists(role, username):
             return _error("账号不存在。", "ACCOUNT_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+        before = _account_snapshot(repository, role, username) or {}
         if profile_data:
             repository.update_profile(role, username, profile_data)
             updated_fields.extend(profile_data.keys())
+            for field, value in profile_data.items():
+                before_value = before.get({"gender": "gender_code", "study_class": "administrative_class"}.get(field, field), "")
+                changes.append({"field": field, "before": before_value, "after": value})
         if active is not None:
             repository.set_active(role, username, active)
             updated_fields.append("is_active")
+            changes.append({"field": "is_active", "before": before.get("status", ""), "after": "启用" if active else "停用"})
         if request.data.get("password"):
             repository.reset_password(role, username, str(request.data["password"]))
             updated_fields.append("password")
+            changes.append({"field": "password", "before": "未更改", "after": "已重置（不记录密码内容）"})
     if class_ids is not None:
         with AdminClassRepository() as class_repository:
+            previous_ids = before.get("class_ids") or []
             class_repository.replace_account_classes(role, username, valid_class_ids)
         updated_fields.append("class_ids")
+        previous_names = _class_audit_names([str(value) for value in previous_ids])
+        next_names = _class_audit_names(valid_class_ids)
+        changes.append({"field": "class_ids", "before": previous_names, "after": next_names})
     if not updated_fields:
         return _error("没有可更新的账号字段。", "ACCOUNT_UPDATE_INVALID", status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as audit:
-        audit.write_audit(session_user(request), "account.update", role, username, {"fields": updated_fields})
+        audit.write_audit(session_user(request), "account.update", role, username, {"fields": updated_fields, "changes": changes})
     return Response({"updated": True, "role": role, "username": username, "fields": updated_fields})
 
 
@@ -260,7 +294,12 @@ def import_accounts_confirm(request):
         with MySQLUserRepository() as repository:
             accounts = repository.create_students_batch(rows)
         with LearningRepository() as audit:
-            audit.write_audit(session_user(request), "account.import", "student", "batch", {"count": len(accounts)})
+            teaching_class = rows[0].get("teaching_class", "") if rows else ""
+            students = [{"username": row["username"], "name": row.get("name", "")} for row in rows]
+            audit.write_audit(
+                session_user(request), "account.import", "student", "batch",
+                {"count": len(accounts), "teaching_class": teaching_class, "students": students},
+            )
         _PENDING_IMPORTS.pop(token, None)
         return Response({"created": len(accounts), "accounts": accounts}, status=status.HTTP_201_CREATED)
     except Exception:
@@ -270,9 +309,61 @@ def import_accounts_confirm(request):
 @api_view(["GET"])
 @permission_classes([IsAdmin])
 def audit_logs(request):
+    category = request.query_params.get("category", "all").strip()
+    if category not in {"all", "login", "assignment", "submission", "account", "other"}:
+        return _error("操作记录分类无效。", "AUDIT_CATEGORY_INVALID", status.HTTP_400_BAD_REQUEST)
+    action_filter = request.query_params.get("action", "").strip()
+    if len(action_filter) > 64:
+        return _error("操作筛选条件无效。", "AUDIT_ACTION_INVALID", status.HTTP_400_BAD_REQUEST)
+    paginated = "page" in request.query_params
+    if paginated:
+        try:
+            page = int(request.query_params.get("page", "1"))
+        except (TypeError, ValueError):
+            return _error("操作记录页码无效。", "AUDIT_PAGE_INVALID", status.HTTP_400_BAD_REQUEST)
+        if page < 1:
+            return _error("操作记录页码必须大于 0。", "AUDIT_PAGE_INVALID", status.HTTP_400_BAD_REQUEST)
+        limit = 20
+        offset = (page - 1) * limit
+    else:
+        try:
+            limit = int(request.query_params.get("limit", 100))
+        except (TypeError, ValueError):
+            return _error("操作记录条数参数无效。", "AUDIT_LIMIT_INVALID", status.HTTP_400_BAD_REQUEST)
+        if limit < 1 or limit > 500:
+            return _error("操作记录条数需在 1 到 500 之间。", "AUDIT_LIMIT_INVALID", status.HTTP_400_BAD_REQUEST)
+        page = 1
+        offset = 0
+
+    date_from = request.query_params.get("from", "").strip()
+    date_to = request.query_params.get("to", "").strip()
+    try:
+        parsed_from = datetime.strptime(date_from, "%Y-%m-%d").date() if date_from else None
+        parsed_to = datetime.strptime(date_to, "%Y-%m-%d").date() if date_to else None
+    except ValueError:
+        return _error("日期需使用 YYYY-MM-DD 格式。", "AUDIT_DATE_INVALID", status.HTTP_400_BAD_REQUEST)
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        return _error("开始日期不能晚于结束日期。", "AUDIT_DATE_RANGE_INVALID", status.HTTP_400_BAD_REQUEST)
+
     with LearningRepository() as repository:
-        items = repository.list_audits(int(request.query_params.get("limit", 100)))
-    return Response({"items": items, "meta": {"total": len(items)}})
+        result = repository.list_audits(
+            limit=limit,
+            category=category,
+            keyword=request.query_params.get("q", "").strip(),
+            action_filter=action_filter,
+            date_from=parsed_from.isoformat() if parsed_from else "",
+            date_to_exclusive=(parsed_to + timedelta(days=1)).isoformat() if parsed_to else "",
+            offset=offset,
+            include_total=paginated,
+        )
+    if paginated:
+        items = result["items"]
+        total = result["total"]
+        return Response({
+            "items": items,
+            "meta": {"total": total, "page": page, "page_size": limit, "total_pages": (total + limit - 1) // limit},
+        })
+    return Response({"items": result, "meta": {"total": len(result)}})
 
 
 @api_view(["GET"])

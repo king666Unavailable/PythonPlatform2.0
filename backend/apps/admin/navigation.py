@@ -18,6 +18,7 @@ NAVIGATION_FEATURES: dict[str, tuple[dict[str, str | int], ...]] = {
         {"id": "teacher-home", "label": "教学概览", "group": "教学工作台", "icon": "home", "path": "/teacher", "sort_order": 10},
         {"id": "teacher-class", "label": "班级学情", "group": "教学工作台", "icon": "class", "path": "/teacher/class", "sort_order": 20},
         {"id": "teacher-student-import", "label": "学生导入", "group": "教学工作台", "icon": "account", "path": "/teacher/students/import", "sort_order": 25},
+        {"id": "teacher-student-audit", "label": "学生操作记录", "group": "教学工作台", "icon": "audit", "path": "/teacher/student-audit", "sort_order": 28},
         {"id": "teacher-assignments", "label": "作业管理", "group": "教学工作台", "icon": "assignment", "path": "/teacher/assignments", "sort_order": 30},
         {"id": "teacher-exams", "label": "组卷与考试", "group": "教学工作台", "icon": "exam", "path": "/teacher/exams", "sort_order": 40},
         {"id": "teacher-question-bank", "label": "题库管理", "group": "课程资源", "icon": "question", "path": "/teacher/questions", "sort_order": 50},

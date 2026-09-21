@@ -121,7 +121,7 @@ def import_students_preview(request):
                 else:
                     rows.append({**item, "gender": _GENDER_CODES[gender]})
         token = uuid.uuid4().hex
-        _PENDING_IMPORTS[token] = {"teacher_username": username, "class_id": class_id, "rows": rows}
+        _PENDING_IMPORTS[token] = {"teacher_username": username, "class_id": class_id, "class": teaching_class_item, "rows": rows}
         return Response({
             "token": token,
             "class": teaching_class_item,
@@ -148,7 +148,14 @@ def import_students_confirm(request):
         with TeacherClassRepository() as repository:
             created = repository.import_students(username, pending["class_id"], pending["rows"])
         with LearningRepository() as audit:
-            audit.write_audit(session_user(request), "class.students.import", "classes", pending["class_id"], {"count": created})
+            audit.write_audit(
+                session_user(request), "class.students.import", "classes", pending["class_id"],
+                {
+                    "count": created,
+                    "class": pending.get("class", {}),
+                    "students": [{"username": row["username"], "name": row.get("name", "")} for row in pending["rows"]],
+                },
+            )
         _PENDING_IMPORTS.pop(token, None)
         return Response({"created": created, "class_id": pending["class_id"]}, status=status.HTTP_201_CREATED)
     except PermissionError:
@@ -204,7 +211,10 @@ def create_student(request):
         with TeacherClassRepository() as repository:
             repository.create_student(teacher_username, class_id, row)
         with LearningRepository() as audit:
-            audit.write_audit(session_user(request), "class.student.create", "classes", class_id, {"username": username})
+            audit.write_audit(
+                session_user(request), "class.student.create", "classes", class_id,
+                {"class": class_item, "student": {"username": username, "name": name}},
+            )
         return Response({"created": 1, "student": {"username": username, "name": name, "class_id": class_id}}, status=status.HTTP_201_CREATED)
     except PermissionError:
         return _error("只能向本人管理的启用教学班添加学生。", "CLASS_FORBIDDEN", status.HTTP_403_FORBIDDEN)

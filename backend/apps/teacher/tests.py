@@ -89,6 +89,44 @@ class TeacherAnalyticsApiTests(MySQLAuthenticationTestMixin, TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    @patch("apps.teacher.audit_views.CurrentClassService")
+    @patch("apps.teacher.audit_views.LearningRepository")
+    def test_teacher_student_audit_query_is_scoped_to_current_class(self, repository_class, class_service_class):
+        self._login("teacher", "teacher123")
+        class_service_class.return_value.require.return_value = {
+            "id": "114", "title": "Python", "teaching_class": "Python2026", "academic_year": "2026"
+        }
+        repository = repository_class.return_value.__enter__.return_value
+        repository.list_audits.return_value = {"items": [{"id": 1, "actor_name": "测试学生"}], "total": 1}
+
+        response = self.client.get("/api/v1/teacher/student-operation-logs", {
+            "q": "测试学生", "action": "submission.create", "from": "2026-09-01", "to": "2026-09-20", "page": 2,
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["class"]["id"], "114")
+        self.assertEqual(response.json()["meta"], {"total": 1, "page": 2, "page_size": 20, "total_pages": 1})
+        repository.list_audits.assert_called_once_with(
+            limit=20,
+            keyword="测试学生",
+            action_filter="submission.create",
+            date_from="2026-09-01",
+            date_to_exclusive="2026-09-21",
+            offset=20,
+            include_total=True,
+            student_class_id="114",
+            teacher_username="teacher",
+        )
+
+    @patch("apps.teacher.audit_views.LearningRepository")
+    def test_student_cannot_read_teacher_student_operation_logs(self, repository_class):
+        self._login("student", "student123")
+
+        response = self.client.get("/api/v1/teacher/student-operation-logs")
+
+        self.assertEqual(response.status_code, 403)
+        repository_class.assert_not_called()
+
     @patch("apps.teacher.services.MySQLClassAnalyticsRepository")
     def test_teacher_can_read_class_analytics(self, mysql_class):
         self._login("teacher", "teacher123")

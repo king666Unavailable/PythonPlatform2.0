@@ -31,6 +31,20 @@ class AuthenticationApiTests(MySQLAuthenticationTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["user"]["role"], "student")
         self.assertEqual(self.client.get("/api/v1/auth/me").json()["user"]["role"], "student")
+        self.audit_repository.write_audit.assert_called_once_with(
+            self.users["student"].public_dict(), "student.login.success", "user_students", "student", {}
+        )
+
+    def test_teacher_login_is_audited(self):
+        response = self.client.post(
+            "/api/v1/auth/login",
+            data={"username": "teacher", "password": "teacher123"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.audit_repository.write_audit.assert_called_once_with(
+            self.users["teacher"].public_dict(), "teacher.login.success", "user_teachers", "teacher", {}
+        )
 
     def test_admin_can_login_and_restore_its_session_identity(self):
         response = self.client.post(
@@ -41,6 +55,9 @@ class AuthenticationApiTests(MySQLAuthenticationTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["user"]["role"], "admin")
         self.assertEqual(self.client.get("/api/v1/auth/me").json()["user"]["role"], "admin")
+        self.audit_repository.write_audit.assert_called_once_with(
+            self.users["admin"].public_dict(), "admin.login.success", "user_admins", "admin", {}
+        )
 
     def test_login_errors_and_logout(self):
         bad_password = self.client.post(
@@ -61,6 +78,29 @@ class AuthenticationApiTests(MySQLAuthenticationTestMixin, TestCase):
             "message": "账户不存在，请联系老师注册。",
             "code": "ACCOUNT_NOT_FOUND",
         })
+
+    def test_manual_logout_is_audited_but_does_not_block_logout(self):
+        login_response = self.client.post(
+            "/api/v1/auth/login",
+            data={"username": "student", "password": "student123"},
+            content_type="application/json",
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.audit_repository.write_audit.reset_mock()
+
+        response = self.client.post("/api/v1/auth/logout")
+
+        self.assertEqual(response.status_code, 200)
+        self.audit_repository.write_audit.assert_called_once_with(
+            self.users["student"].public_dict(), "logout.manual", "session", "student", {}
+        )
+        self.assertEqual(self.client.get("/api/v1/auth/me").status_code, 403)
+
+    def test_anonymous_logout_does_not_create_audit_record(self):
+        response = self.client.post("/api/v1/auth/logout")
+
+        self.assertEqual(response.status_code, 200)
+        self.audit_repository.write_audit.assert_not_called()
 
     def test_session_mutations_require_csrf_when_checks_are_enabled(self):
         csrf_client = self.client.__class__(enforce_csrf_checks=True)
