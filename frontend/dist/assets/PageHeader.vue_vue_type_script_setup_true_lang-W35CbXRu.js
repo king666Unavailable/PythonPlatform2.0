@@ -1,0 +1,1 @@
+import{d as s,c as a,a as o,aI as t,y as r,o as n}from"./index-BdE-RrRw.js";const c={key:0,class:"page-header"},d={class:"page-header-actions"},l=s({__name:"PageHeader",props:{title:{},description:{}},setup(i){return(e,p)=>e.$slots.actions?(n(),a("div",c,[o("div",d,[t(e.$slots,"actions")])])):r("",!0)}});export{l as _};
