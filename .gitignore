@@ -11,3 +11,8 @@ scripts/
 *.log
 test_piston.py
 database/python_platform_demo.sql
+runPlatform.sh
+run/.venv/
+
+.venv/
+run/
