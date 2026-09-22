@@ -462,8 +462,8 @@ class LearningRepository:
             cursor.execute(
                 """
                 SELECT COUNT(DISTINCT question_position) AS graded_questions,
-                       SUM(CASE WHEN status <> 'graded' OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
-                       AVG(CASE WHEN status='graded' THEN score ELSE NULL END) AS average_score
+                       SUM(CASE WHEN status NOT IN ('graded','code_structure_error','function_not_found') OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
+                       AVG(CASE WHEN status IN ('graded','code_structure_error','function_not_found') THEN score ELSE NULL END) AS average_score
                 FROM submission_grades
                 WHERE submission_id=%s
                 """,
@@ -474,8 +474,10 @@ class LearningRepository:
             pending_questions = int(grade_summary.get("pending_questions") or 0)
             average_score = grade_summary.get("average_score")
         # A result is available only after every assignment question has a
-        # persisted graded row.  Programming questions may contribute a
+        # persisted terminal row.  Programming questions may contribute a
         # weighted partial score; objective questions remain 100/0.
+        # code_structure_error / function_not_found are terminal zero-score
+        # outcomes, so they count toward the average instead of blocking it.
         if pending_questions or graded_questions < total_questions or average_score is None:
             return None
         if total_questions <= 0:

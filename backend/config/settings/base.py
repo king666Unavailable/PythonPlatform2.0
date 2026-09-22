@@ -146,6 +146,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 
+# 单端口部署：Django 同端口托管 frontend/dist（配合 urls.py 的 SPA 路由）
+SERVE_FRONTEND_DIST = _config("SERVE_FRONTEND_DIST", "false").lower() == "true"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

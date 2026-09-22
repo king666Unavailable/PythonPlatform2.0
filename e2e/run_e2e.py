@@ -252,8 +252,10 @@ def main() -> None:
         )
         check("student2 submit returns 201", response.status_code == 201, f"{response.status_code} {response.content[:300]}")
         submission = response.json().get("submission", {})
-        check("student2 submission stays grading", submission.get("status") == "grading", str(submission.get("status")))
-        check("student2 score is None", submission.get("score") is None, str(submission.get("score")))
+        # code_structure_error / function_not_found are terminal zero-score
+        # results now, so the submission finalizes with a total score.
+        check("student2 submission graded", submission.get("status") == "graded", str(submission.get("status")))
+        check("student2 has total score", submission.get("score") is not None, str(submission.get("score")))
 
         grades = {int(grade["position"]): grade for grade in submission.get("grades", [])}
         check("student2 syntax error detected", grades.get(1, {}).get("status") == "code_structure_error", str(grades.get(1)))

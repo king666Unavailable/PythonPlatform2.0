@@ -252,8 +252,8 @@ class FunctionGradingTests(SimpleTestCase):
         run.assert_not_called()
         item = result["items"][0]
         self.assertEqual(item["status"], "function_not_found")
-        self.assertEqual(result["status"], "grading")
-        self.assertIsNone(result["score"])
+        self.assertEqual(result["status"], "graded")
+        self.assertEqual(result["score"], 0)
 
     @patch("domain.scoring.GlotClient.run")
     def test_function_mode_missing_function_marker_keeps_submission(self, run):
@@ -264,7 +264,7 @@ class FunctionGradingTests(SimpleTestCase):
         )
         item = result["items"][0]
         self.assertEqual(item["status"], "function_not_found")
-        self.assertEqual(result["status"], "grading")
+        self.assertEqual(result["status"], "graded")
 
     @patch("domain.scoring.GlotClient.run")
     def test_wrapped_body_grades_snippet(self, run):
@@ -365,7 +365,8 @@ class FunctionGradingTests(SimpleTestCase):
         item = result["items"][0]
         self.assertEqual(item["status"], "code_structure_error")
         self.assertIn("语法错误", item["feedback"])
-        self.assertEqual(result["status"], "grading")
+        self.assertEqual(result["status"], "graded")
+        self.assertEqual(result["score"], 0)
 
     @patch("domain.scoring.GlotClient.run")
     def test_stdio_wrong_output_scores_zero_with_case_detail(self, run):

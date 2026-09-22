@@ -49,7 +49,9 @@ class ScoringService:
             if type_code in {"3", "4"}:
                 result = self._grade_programming_question(position, question, value)
                 item_results.append(result)
-                if result["status"] in {"pending_test_cases", "function_not_found", "code_structure_error"}:
+                # code_structure_error / function_not_found 已是终态（0 分且有明确反馈），
+                # 不能阻塞整份作业出总分；只有缺测试用例等场景才留给教师处理。
+                if result["status"] == "pending_test_cases":
                     pending = True
                 elif result["status"] == "grading_unavailable":
                     unavailable = True
