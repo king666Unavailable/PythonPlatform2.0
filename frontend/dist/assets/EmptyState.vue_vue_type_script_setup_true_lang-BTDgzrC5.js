@@ -1,0 +1,1 @@
+import{d as i,c as s,a as o,t as n,y as c,o as a}from"./index-BdE-RrRw.js";const r={class:"empty-state"},d={key:0},l=i({__name:"EmptyState",props:{title:{},description:{}},setup(t){return(m,e)=>(a(),s("div",r,[e[0]||(e[0]=o("div",{class:"empty-icon"},"○",-1)),o("strong",null,n(t.title),1),t.description?(a(),s("p",d,n(t.description),1)):c("",!0)]))}});export{l as _};

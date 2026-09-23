@@ -81,6 +81,14 @@ def question_update(request, question_id: str):
         return Response({"message": "题目修改失败。", "code": "QUESTION_UPDATE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
     if not question:
         return Response({"message": "题目不存在。", "code": "QUESTION_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+    with LearningRepository() as audit:
+        audit.write_audit(
+            session_user(request),
+            "question.update",
+            "question",
+            str(question_id),
+            {"title": question.get("title", ""), "fields": sorted(request.data.keys())},
+        )
     return Response({"question": question})
 
 

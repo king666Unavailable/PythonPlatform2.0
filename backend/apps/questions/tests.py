@@ -97,6 +97,29 @@ class QuestionApiTests(MySQLAuthenticationTestMixin, TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["code"], "QUESTION_NOT_FOUND")
 
+    @patch("apps.questions.views.LearningRepository")
+    @patch("apps.questions.views.MySQLQuestionRepository")
+    def test_question_update_is_audited(self, question_repository_class, audit_repository_class):
+        self._login("teacher", "teacher123")
+        question_repository = question_repository_class.return_value.__enter__.return_value
+        question_repository.update_question.return_value = {"id": "question-1", "title": "更新后的题目"}
+
+        response = self.client.patch(
+            "/api/v1/teacher/questions/question-1",
+            data={"title": "更新后的题目", "analysis": "新的解析"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        audit_repository = audit_repository_class.return_value.__enter__.return_value
+        audit_repository.write_audit.assert_called_once_with(
+            self.users["teacher"].public_dict(),
+            "question.update",
+            "question",
+            "question-1",
+            {"title": "更新后的题目", "fields": ["analysis", "title"]},
+        )
+
     @patch("apps.questions.services.MySQLQuestionRepository")
     def test_backend_failure_returns_service_unavailable(self, repository_class):
         self._login("teacher", "teacher123")

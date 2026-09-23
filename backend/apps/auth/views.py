@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from api.permissions import IsSessionAuthenticated, session_user
 from api.serializers import LoginSerializer, PasswordChangeSerializer
+from repositories.learning_repository import LearningRepository
 from .services import AuthenticationBackendUnavailable, AuthenticationService
 
 
@@ -81,6 +82,13 @@ def login(request):
     request.session.cycle_key()
     _store_user_session(request, user)
     logger.info("login_success", extra={"username": username, "role": user["role"]})
+    try:
+        account_table = {"student": "user_students", "teacher": "user_teachers", "admin": "user_admins"}[user["role"]]
+        with LearningRepository() as repository:
+            repository.write_audit(user, f"{user['role']}.login.success", account_table, username, {})
+    except Exception:
+        # Audit storage must not make an otherwise valid login fail.
+        logger.exception("login_audit_failed", extra={"username": username, "role": user["role"]})
     return Response({"message": "登录成功。", "user": user})
 
 
@@ -131,6 +139,14 @@ def me(request):
 def logout(request):
     """Clear the authenticated session."""
 
+    user = session_user(request)
+    if user:
+        try:
+            with LearningRepository() as repository:
+                repository.write_audit(user, "logout.manual", "session", user.get("username", ""), {})
+        except Exception:
+            # Always clear the session even when audit storage is unavailable.
+            logger.exception("manual_logout_audit_failed", extra={"username": user.get("username", "")})
     request.session.flush()
     return Response({"message": "已退出登录。"})
 

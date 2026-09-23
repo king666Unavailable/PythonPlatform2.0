@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchClassAnalytics, fetchTeacherClassMastery, fetchTeacherStudentProfile } from '@/api/client'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
@@ -9,6 +10,7 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import type { ClassKnowledgeMasteryResponse, ClassMasteryNode } from '@/types/teacher'
 
 const classId = ref('all')
+const route = useRoute()
 const data = ref<any>(null)
 const student = ref<any>(null)
 const loading = ref(true)
@@ -136,7 +138,21 @@ function selectMasteryNode(node: ClassMasteryNode) {
   void loadMastery(node.node_type, node.node_id)
 }
 
-onMounted(() => void load())
+onMounted(() => {
+  void load()
+  if (route.query.tab === 'mastery') void loadMastery()
+})
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (tab === 'mastery') switchTab('mastery')
+  },
+)
+
+if (route.query.tab === 'mastery') {
+  activeTab.value = 'mastery'
+}
 </script>
 
 <template>
