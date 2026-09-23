@@ -45,6 +45,7 @@ def _config(name: str, default: str = "") -> str:
 SECRET_KEY = _config("DJANGO_SECRET_KEY", "temporary-development-secret-key")
 DEBUG = _config("DJANGO_DEBUG", "true").lower() == "true"
 ALLOWED_HOSTS = [host for host in _config("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if host]
+PYTHONPLATFORM_BACKEND_PORT = int(_config("PYTHONPLATFORM_BACKEND_PORT", "8000"))
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
@@ -134,9 +135,15 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = "Lax"
+_configured_csrf_origins = [
+    origin.strip().rstrip("/")
+    for origin in _config("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    *_configured_csrf_origins,
 ]
 
 LANGUAGE_CODE = "zh-hans"
