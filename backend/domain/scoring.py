@@ -6,7 +6,14 @@ from typing import Any
 
 from apps.code_runner.services import GlotClient, GlotNotConfigured, GlotUnavailable
 
-from .programming import normalize_programming_config, outputs_match
+from .programming import (
+    build_execution_files,
+    normalize_programming_config,
+    outputs_match,
+    parse_function_result,
+    validate_student_code,
+    values_match,
+)
 
 def _answer_at(answers: Any, position: int) -> Any:
     if isinstance(answers, list):
@@ -42,6 +49,8 @@ class ScoringService:
             if type_code in {"3", "4"}:
                 result = self._grade_programming_question(position, question, value)
                 item_results.append(result)
+                # code_structure_error / function_not_found 已是终态（0 分且有明确反馈），
+                # 不能阻塞整份作业出总分；只有缺测试用例等场景才留给教师处理。
                 if result["status"] == "pending_test_cases":
                     pending = True
                 elif result["status"] == "grading_unavailable":
@@ -62,6 +71,7 @@ class ScoringService:
     def _grade_programming_question(position: int, question: dict[str, Any], code: Any) -> dict[str, Any]:
         config = normalize_programming_config(question.get("programming_config", question.get("programming_config_json")))
         cases = config["test_cases"]
+        mode = config["execution_mode"]
         base = {"position": position, "provider": "piston"}
         if not cases:
             return {
@@ -69,6 +79,28 @@ class ScoringService:
                 "score": None,
                 "status": "pending_test_cases",
                 "feedback": "该编程题尚未配置测试用例",
+                "grading_details": {"cases": []},
+            }
+
+        if mode == "function" and not config["function_name"]:
+            return {
+                **base,
+                "score": None,
+                "status": "pending_test_cases",
+                "feedback": "该函数题尚未配置判卷函数名",
+                "grading_details": {"cases": []},
+            }
+        # Static entry validation applies to every execution mode: empty or
+        # syntactically invalid code never spends a remote execution, and
+        # function-mode questions additionally require the entry symbol.
+        entry_error = validate_student_code(config, code)
+        if entry_error is not None:
+            status, feedback = entry_error
+            return {
+                **base,
+                "score": None,
+                "status": status,
+                "feedback": feedback,
                 "grading_details": {"cases": []},
             }
 
@@ -80,8 +112,8 @@ class ScoringService:
                 result = GlotClient().run(
                     config["language"],
                     config["version"],
-                    [{"name": config["filename"], "content": str(code or "")}],
-                    case["stdin"],
+                    build_execution_files(config, case, code),
+                    case["stdin"] if mode == "stdio" else "",
                     timeout_seconds=config["timeout_ms"] / 1000,
                 )
             except (GlotNotConfigured, GlotUnavailable) as exc:
@@ -96,12 +128,33 @@ class ScoringService:
             error = str(result.get("error") or "")
             if error:
                 lowered = error.casefold()
-                case_status = "timeout" if "timeout" in lowered or "超时" in error else "runtime_error"
+                case_status = "timeout" if ("timeout" in lowered or "timed out" in lowered or "超时" in error) else "runtime_error"
                 earned = 0.0
-            else:
+                actual: dict[str, Any] = {"actual_output": str(result.get("stdout", "") or "")}
+            elif mode == "stdio":
                 passed = outputs_match(result.get("stdout", ""), case["expected_output"], case["comparison_mode"])
                 case_status = "passed" if passed else "wrong_answer"
                 earned = float(case["weight"]) if passed else 0.0
+                actual = {"actual_output": str(result.get("stdout", "") or "")}
+            else:
+                parsed = parse_function_result(result.get("stdout", ""))
+                if parsed["status"] == "function_not_found":
+                    return {
+                        **base,
+                        "score": None,
+                        "status": "function_not_found",
+                        "feedback": f"未找到指定函数 `{config['function_name']}`，请检查函数名是否被修改。",
+                        "grading_details": {"cases": case_results},
+                    }
+                if parsed["status"] == "ok":
+                    passed = values_match(parsed["value"], case["expected_value"], case["return_type"], config["tolerance"])
+                    case_status = "passed" if passed else "wrong_answer"
+                    earned = float(case["weight"]) if passed else 0.0
+                    actual = {"actual_value": parsed["value"]}
+                else:
+                    case_status = "wrong_answer"
+                    earned = 0.0
+                    actual = {"actual_output": str(result.get("stdout", "") or "")}
             earned_weight += earned
             case_results.append(
                 {
@@ -109,8 +162,8 @@ class ScoringService:
                     "status": case_status,
                     "score": round(earned / total_weight * 100, 2),
                     "runtime_ms": int(result.get("executionTime", 0) or 0),
-                    "actual_output": str(result.get("stdout", "") or ""),
                     "error_message": error,
+                    **actual,
                 }
             )
 

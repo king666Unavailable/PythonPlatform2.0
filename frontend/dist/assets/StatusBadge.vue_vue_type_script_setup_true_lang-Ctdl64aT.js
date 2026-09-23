@@ -1,1 +1,0 @@
-import{d as e,c as t,z as s,t as n,o}from"./index-BdE-RrRw.js";const m=e({__name:"StatusBadge",props:{label:{},tone:{}},setup(a){return(l,r)=>(o(),t("span",{class:s(["status-badge",`tone-${a.tone??"gray"}`])},n(a.label),3))}});export{m as _};
