@@ -35,7 +35,7 @@ class Neo4jContentRepository:
             raise ValueError("unsupported node type")
         with self.repository.driver.session(**self._session_options()) as session:
             return session.run(
-                f"MATCH (node:{label}) RETURN elementId(node) AS id, node.title AS title, properties(node) AS properties ORDER BY toLower(coalesce(node.title,''))"
+                f"MATCH (node:{label}) RETURN toString(node.uid) AS id, node.title AS title, properties(node) AS properties ORDER BY toLower(coalesce(node.title,''))"
             ).data()
 
     def fetch_management_structure(self) -> dict[str, Any]:
@@ -45,7 +45,7 @@ class Neo4jContentRepository:
                 """
                 MATCH (node)
                 WHERE node:Class OR node:Theme OR node:Knowledge OR node:Point
-                RETURN elementId(node) AS id,
+                RETURN toString(node.uid) AS id,
                        coalesce(node.title, '') AS title,
                        CASE WHEN node:Class THEN 'class'
                             WHEN node:Theme THEN 'theme'
@@ -65,14 +65,14 @@ class Neo4jContentRepository:
                 WHERE (parent:Class AND child:Theme)
                    OR (parent:Theme AND child:Knowledge)
                    OR (parent:Knowledge AND child:Point)
-                RETURN elementId(parent) AS source, elementId(child) AS target
+                RETURN toString(parent.uid) AS source, toString(child.uid) AS target
                 ORDER BY source, target
                 """
             ).data()
             question_records = session.run(
                 """
                 MATCH (point:Point)-[:relate]->(question:Test)
-                RETURN elementId(point) AS point_id, count(question) AS question_count
+                RETURN toString(point.uid) AS point_id, count(question) AS question_count
                 """
             ).data()
 
@@ -146,7 +146,7 @@ class Neo4jContentRepository:
         values["title"] = title
         with self.repository.driver.session(**self._session_options()) as session:
             record = session.run(
-                f"CREATE (node:{label}) SET node = $properties RETURN elementId(node) AS id, node.title AS title, properties(node) AS properties",
+                f"CREATE (node:{label}) SET node = $properties, node.uid = randomUUID() RETURN toString(node.uid) AS id, node.title AS title, properties(node) AS properties",
                 properties=values,
             ).single()
         return dict(record) if record else {}
@@ -157,7 +157,7 @@ class Neo4jContentRepository:
             raise ValueError("unsupported parent type")
         with self.repository.driver.session(**self._session_options()) as session:
             record = session.run(
-                f"MATCH (node) WHERE elementId(node)=$node_id MATCH (parent:{parent_label}) WHERE elementId(parent)=$parent_id MERGE (parent)-[:include]->(node) RETURN count(node) AS linked",
+                f"MATCH (node) WHERE toString(node.uid)=$node_id MATCH (parent:{parent_label}) WHERE toString(parent.uid)=$parent_id MERGE (parent)-[:include]->(node) RETURN count(node) AS linked",
                 node_id=node_id,
                 parent_id=parent_id,
             ).single()
@@ -170,19 +170,19 @@ class Neo4jContentRepository:
             values = {}
         with self.repository.driver.session(**self._session_options()) as session:
             record = session.run(
-                "MATCH (node) WHERE elementId(node)=$node_id SET node += $properties RETURN elementId(node) AS id, node.title AS title, properties(node) AS properties",
+                "MATCH (node) WHERE toString(node.uid)=$node_id SET node += $properties RETURN toString(node.uid) AS id, node.title AS title, properties(node) AS properties",
                 node_id=node_id,
                 properties=values,
             ).single()
             if record and parent_id is not None:
                 session.run(
                     """
-                    MATCH (node) WHERE elementId(node)=$node_id
+                    MATCH (node) WHERE toString(node.uid)=$node_id
                     OPTIONAL MATCH (old_parent)-[old:include]->(node)
                     DELETE old
                     WITH node
                     OPTIONAL MATCH (parent)
-                    WHERE elementId(parent)=$parent_id
+                    WHERE toString(parent.uid)=$parent_id
                       AND ($parent_type='' OR ($parent_type='Class' AND parent:Class) OR ($parent_type='Theme' AND parent:Theme) OR ($parent_type='Knowledge' AND parent:Knowledge))
                     FOREACH (_ IN CASE WHEN parent IS NULL OR $parent_id='' THEN [] ELSE [1] END | MERGE (parent)-[:include]->(node))
                     """,
@@ -200,7 +200,7 @@ class Neo4jContentRepository:
             raise ValueError("node has dependent children or related questions")
         with self.repository.driver.session(**self._session_options()) as session:
             result = session.run(
-                "MATCH (node) WHERE elementId(node)=$node_id DETACH DELETE node RETURN count(node) AS deleted",
+                "MATCH (node) WHERE toString(node.uid)=$node_id DETACH DELETE node RETURN count(node) AS deleted",
                 node_id=node_id,
             ).single()
         return bool(result and result["deleted"])
@@ -224,12 +224,12 @@ class Neo4jContentRepository:
         with self.repository.driver.session(**self._session_options()) as session:
             record = session.run(
                 """
-                CREATE (question:Test) SET question = $properties
+                CREATE (question:Test) SET question = $properties, question.uid = randomUUID()
                 WITH question
                 UNWIND CASE WHEN size($point_titles) = 0 THEN [null] ELSE $point_titles END AS point_title
                 OPTIONAL MATCH (point:Point {title: point_title})
                 FOREACH (_ IN CASE WHEN point IS NULL THEN [] ELSE [1] END | MERGE (point)-[:relate]->(question))
-                RETURN elementId(question) AS id, question.title AS title, properties(question) AS properties
+                RETURN toString(question.uid) AS id, question.title AS title, properties(question) AS properties
                 """,
                 properties=properties,
                 point_titles=point_titles,
@@ -251,7 +251,7 @@ class Neo4jContentRepository:
         with self.repository.driver.session(**self._session_options()) as session:
             record = session.run(
                 """
-                MATCH (question:Test) WHERE elementId(question)=$question_id
+                MATCH (question:Test) WHERE toString(question.uid)=$question_id
                 SET question += $properties
                 WITH question
                 OPTIONAL MATCH (point:Point)-[old:relate]->(question)
@@ -260,7 +260,7 @@ class Neo4jContentRepository:
                 UNWIND CASE WHEN size($point_titles) = 0 THEN [null] ELSE $point_titles END AS point_title
                 OPTIONAL MATCH (new_point:Point {title: point_title})
                 FOREACH (_ IN CASE WHEN new_point IS NULL THEN [] ELSE [1] END | MERGE (new_point)-[:relate]->(question))
-                RETURN elementId(question) AS id, question.title AS title, properties(question) AS properties
+                RETURN toString(question.uid) AS id, question.title AS title, properties(question) AS properties
                 """,
                 question_id=question_id,
                 properties=properties,
@@ -271,7 +271,7 @@ class Neo4jContentRepository:
     def delete_question(self, question_id: str) -> bool:
         with self.repository.driver.session(**self._session_options()) as session:
             result = session.run(
-                "MATCH (question:Test) WHERE elementId(question)=$question_id DETACH DELETE question RETURN count(question) AS deleted",
+                "MATCH (question:Test) WHERE toString(question.uid)=$question_id DETACH DELETE question RETURN count(question) AS deleted",
                 question_id=question_id,
             ).single()
         return bool(result and result["deleted"])

@@ -82,7 +82,7 @@ class Neo4jKnowledgeGraphRepository:
                 """
                 MATCH (node)
                 WHERE node:Class OR node:Theme OR node:Knowledge OR node:Point
-                RETURN elementId(node) AS node_id,
+                RETURN toString(node.uid) AS node_id,
                        coalesce(node.title, '') AS label,
                        CASE
                            WHEN node:Class THEN 'class'
@@ -106,8 +106,8 @@ class Neo4jKnowledgeGraphRepository:
                 WHERE (parent:Class AND child:Theme)
                    OR (parent:Theme AND child:Knowledge)
                    OR (parent:Knowledge AND child:Point)
-                RETURN elementId(parent) AS source,
-                       elementId(child) AS target,
+                RETURN toString(parent.uid) AS source,
+                       toString(child.uid) AS target,
                        type(relation) AS relation
                 ORDER BY source, target
                 """,

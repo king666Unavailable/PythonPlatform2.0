@@ -108,7 +108,7 @@ class MySQLStudentMasteryRepository:
                 """
                 SELECT sm.node_type, sm.node_id, sm.mastery_score, sm.accuracy_score,
                        sm.attempted_count, sm.correct_equivalent, sm.last_answered_at,
-                       refs.original_node_id
+                       COALESCE(refs.uid, refs.original_node_id) AS graph_node_id
                 FROM student_mastery sm
                 LEFT JOIN legacy_graph_node_refs refs
                   ON refs.new_id=sm.node_id
@@ -130,7 +130,7 @@ class MySQLStudentMasteryRepository:
             class_id=class_id,
             nodes=tuple(
                 MasteryNode(
-                    graph_node_id=str(row["original_node_id"]) if row.get("original_node_id") else None,
+                    graph_node_id=str(row["graph_node_id"]) if row.get("graph_node_id") else None,
                     node_type=str(row["node_type"]),
                     node_id=str(row["node_id"]),
                     score=round(_number(row.get("mastery_score")), 1),
