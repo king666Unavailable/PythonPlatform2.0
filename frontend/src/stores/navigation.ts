@@ -36,8 +36,13 @@ function visibleIds(role: NavigationRole) {
   return new Set(items.value.filter((item) => item.is_visible).map((item) => item.id))
 }
 
+function sortOrders(role: NavigationRole) {
+  if (!items.value.length || lastRole !== role) return undefined
+  return new Map(items.value.map((item) => [item.id, item.sort_order]))
+}
+
 function groupsForRole(role: NavigationRole): NavigationGroup[] {
-  return navigationForRole(role, visibleIds(role))
+  return navigationForRole(role, visibleIds(role), sortOrders(role))
 }
 
 function firstPath(role: NavigationRole) {

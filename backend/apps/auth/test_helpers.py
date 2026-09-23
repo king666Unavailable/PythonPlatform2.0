@@ -17,6 +17,10 @@ class MySQLAuthenticationTestMixin:
         self.mysql_repository_patcher = patch("apps.auth.services.MySQLUserRepository")
         repository_class = self.mysql_repository_patcher.start()
         self.addCleanup(self.mysql_repository_patcher.stop)
+        self.audit_repository_patcher = patch("apps.auth.views.LearningRepository")
+        audit_repository_class = self.audit_repository_patcher.start()
+        self.addCleanup(self.audit_repository_patcher.stop)
+        self.audit_repository = audit_repository_class.return_value.__enter__.return_value
         self.repository = repository_class.return_value.__enter__.return_value
         self.users = {
             "admin": UserRecord(

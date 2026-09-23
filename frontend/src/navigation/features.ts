@@ -40,6 +40,7 @@ const teacherGroups: NavigationGroup[] = [
       { id: 'teacher-home', label: '教学概览', icon: 'home', to: '/teacher' },
       { id: 'teacher-class', label: '班级学情', icon: 'class', to: '/teacher/class' },
       { id: 'teacher-student-import', label: '学生导入', icon: 'account', to: '/teacher/students/import' },
+      { id: 'teacher-student-audit', label: '学生操作记录', icon: 'audit', to: '/teacher/student-audit' },
       { id: 'teacher-assignments', label: '作业管理', icon: 'assignment', to: '/teacher/assignments' },
       { id: 'teacher-exams', label: '组卷与考试', icon: 'exam', to: '/teacher/exams' },
     ],
@@ -67,10 +68,20 @@ const adminGroups: NavigationGroup[] = [
   },
 ]
 
-export function navigationForRole(role: NavigationRole, visibleIds?: Set<string>): NavigationGroup[] {
+export function navigationForRole(
+  role: NavigationRole,
+  visibleIds?: Set<string>,
+  sortOrders?: Map<string, number>,
+): NavigationGroup[] {
   const groups = role === 'student' ? studentGroups : role === 'teacher' ? teacherGroups : adminGroups
-  if (!visibleIds) return groups
+  if (!visibleIds && !sortOrders) return groups
   return groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => visibleIds.has(item.id)) }))
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item) => !visibleIds || visibleIds.has(item.id))
+        .sort((left, right) => (sortOrders?.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+          - (sortOrders?.get(right.id) ?? Number.MAX_SAFE_INTEGER)),
+    }))
     .filter((group) => group.items.length)
 }

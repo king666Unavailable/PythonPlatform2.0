@@ -196,6 +196,10 @@ conda activate python_platform
    ```powershell
    conda activate python_platform
    ```
+   或者
+   ```powershell
+   source ./.venv/bin/activate
+   ```
 
 2. 安装 Python 依赖：
 
@@ -209,6 +213,15 @@ conda activate python_platform
    ```powershell
    cd backend
    python manage.py runserver 127.0.0.1:8000 --noreload
+   ```
+
+   若8000端口已被占用，则修改上述命令的端口，并同步修改`.env`为新的端口，使前端能够访问新的后端路由。
+   
+   ```powershell
+   #bash
+   python manage.py runserver 127.0.0.1:8001 --noreload
+   #.env
+   PYTHONPLATFORM_BACKEND_PORT=8001
    ```
 
 后端健康检查地址为 `http://127.0.0.1:8000/api/v1/health`。
@@ -235,7 +248,19 @@ npm install
 npm run dev
 ```
 
-前端访问地址为 `http://127.0.0.1:5173/`。
+只允许本机访问，远程 curl 不了。Vite 项目通常需要这样启动：
+
+```powershell
+npm run dev -- --host 0.0.0.0
+```
+
+前端默认访问地址为 `http://127.0.0.1:5173/`或者`http://localhost:5173`
+
+若使用`服务器IP:5173`或者其他来源访问，需要修改`.env`添加新的IP。否则会出现CSRF 校验失败。
+
+   ```powershell
+   DJANGO_CSRF_TRUSTED_ORIGINS=
+   ```
 
 ## API 组织方式
 

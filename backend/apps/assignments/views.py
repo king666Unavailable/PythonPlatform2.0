@@ -19,6 +19,59 @@ def _error(message: str, code: str, status_code: int):
     return Response({"message": message, "code": code}, status=status_code)
 
 
+_ASSIGNMENT_AUDIT_SETTINGS = (
+    "deadline", "time_limit", "assignment_kind", "open_state", "target_usernames", "allow_answer_view",
+)
+
+
+def _assignment_audit_detail(assignment: dict, fields: set[str] | None = None) -> dict:
+    """Capture a title snapshot and selected normalized assignment settings."""
+    selected_fields = set(_ASSIGNMENT_AUDIT_SETTINGS if fields is None else fields)
+    detail = {"assignment_title": str(assignment.get("title") or "未命名作业")}
+    for field in _ASSIGNMENT_AUDIT_SETTINGS:
+        if field not in selected_fields:
+            continue
+        value = assignment.get(field)
+        if field == "time_limit":
+            value = int(value or 0)
+        elif field in {"target_usernames"}:
+            value = value if isinstance(value, list) else []
+        elif field == "allow_answer_view":
+            value = bool(value)
+        elif value is None:
+            value = ""
+        detail[field] = value
+    return detail
+
+
+def _assignment_update_audit_fields(data: dict) -> set[str]:
+    fields: set[str] = set()
+    if "deadline" in data:
+        fields.add("deadline")
+    if "time_limit" in data or "timelimit" in data:
+        fields.add("time_limit")
+    if "assignment_kind" in data:
+        fields.add("assignment_kind")
+    if "open_state" in data or "target_usernames" in data or "open_usernames" in data:
+        fields.update({"open_state", "target_usernames"})
+    if "allow_answer_view" in data or "allow_view_answers" in data:
+        fields.add("allow_answer_view")
+    return fields
+
+
+def _makeup_audit_detail(assignment: dict, window: dict) -> dict:
+    return {
+        "assignment_title": str(assignment.get("title") or "未命名作业"),
+        "makeup_window_id": window.get("id"),
+        "deadline": window.get("deadline") or "",
+        "time_limit": int(window.get("time_limit") or 0),
+        "assignment_kind": window.get("assignment_kind") or "",
+        "open_state": window.get("open_state") or "yes",
+        "target_usernames": window.get("target_usernames") or [],
+        "is_active": bool(window.get("is_active", True)),
+    }
+
+
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def student_assignments(request):
@@ -72,7 +125,9 @@ def teacher_makeup_windows(request, assignment_id: str):
         except ValueError as exc:
             return _error(str(exc), "MAKEUP_INVALID", status.HTTP_400_BAD_REQUEST)
         with LearningRepository() as repository:
-            repository.write_audit(user, "assignment.makeup_window.create", "assignment", assignment_id, request.data)
+            assignment = repository.get_assignment(assignment_id)
+            audit_detail = _makeup_audit_detail(assignment or {}, window)
+            repository.write_audit(user, "assignment.makeup_window.create", "assignment", assignment_id, audit_detail)
         return Response({"makeup_window": window}, status=status.HTTP_201_CREATED)
 
     with LearningRepository() as repository:
@@ -98,7 +153,10 @@ def update_makeup_window(request, assignment_id: str, window_id: str):
     except ValueError as exc:
         return _error(str(exc), "MAKEUP_INVALID", status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as repository:
-        repository.write_audit(user, "assignment.makeup_window.update", "assignment", assignment_id, {"window_id": window_id, **request.data})
+        assignment = repository.get_assignment(assignment_id)
+        audit_detail = _makeup_audit_detail(assignment or {}, window)
+        audit_detail["window_id"] = window_id
+        repository.write_audit(user, "assignment.makeup_window.update", "assignment", assignment_id, audit_detail)
     return Response({"makeup_window": window})
 
 
@@ -108,7 +166,10 @@ def create_assignment(request):
     try:
         assignment = AssignmentService().create(request.data, session_user(request)["username"], class_id=current_class_id(request))
         with LearningRepository() as repository:
-            repository.write_audit(session_user(request), "assignment.create", "assignment", assignment["id"], {"title": assignment["title"]})
+            repository.write_audit(
+                session_user(request), "assignment.create", "assignment", assignment["id"],
+                _assignment_audit_detail(assignment),
+            )
     except ValueError as exc:
         return _error(str(exc), "ASSIGNMENT_INVALID", status.HTTP_400_BAD_REQUEST)
     return Response({"assignment": assignment}, status=status.HTTP_201_CREATED)
@@ -126,7 +187,10 @@ def update_assignment(request, assignment_id: str):
     except ValueError as exc:
         return _error(str(exc), "ASSIGNMENT_INVALID", status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as repository:
-        repository.write_audit(session_user(request), "assignment.update", "assignment", assignment_id, request.data)
+        repository.write_audit(
+            session_user(request), "assignment.update", "assignment", assignment_id,
+            _assignment_audit_detail(assignment, _assignment_update_audit_fields(request.data)),
+        )
     return Response({"assignment": assignment})
 
 
@@ -137,6 +201,11 @@ def create_mock(request):
         assignment = AssignmentService().create_mock(request.data, session_user(request)["username"], current_class_id(request))
     except ValueError as exc:
         return _error(str(exc), "MOCK_INVALID", status.HTTP_400_BAD_REQUEST)
+    with LearningRepository() as repository:
+        repository.write_audit(
+            session_user(request), "assignment.create", "assignment", assignment["id"],
+            _assignment_audit_detail(assignment),
+        )
     return Response({"assignment": assignment}, status=status.HTTP_201_CREATED)
 
 
@@ -147,6 +216,11 @@ def create_exam(request):
         assignment = AssignmentService().create(request.data, session_user(request)["username"], assignment_kind="exam", class_id=current_class_id(request))
     except ValueError as exc:
         return _error(str(exc), "EXAM_INVALID", status.HTTP_400_BAD_REQUEST)
+    with LearningRepository() as repository:
+        repository.write_audit(
+            session_user(request), "assignment.create", "assignment", assignment["id"],
+            _assignment_audit_detail(assignment),
+        )
     return Response({"assignment": assignment}, status=status.HTTP_201_CREATED)
 
 
@@ -172,4 +246,9 @@ def generate_paper(request):
         return _error(str(exc), "PAPER_INVALID", status.HTTP_400_BAD_REQUEST)
     except Exception:
         return _error("题目服务暂不可用，无法组卷。", "PAPER_BACKEND_UNAVAILABLE", status.HTTP_503_SERVICE_UNAVAILABLE)
+    with LearningRepository() as repository:
+        repository.write_audit(
+            session_user(request), "assignment.create", "assignment", assignment["id"],
+            _assignment_audit_detail(assignment),
+        )
     return Response({"assignment": assignment, "selected_count": len(selected)}, status=status.HTTP_201_CREATED)

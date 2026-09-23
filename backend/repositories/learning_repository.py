@@ -436,7 +436,10 @@ class LearningRepository:
                     (
                         submission_id,
                         int(item.get("position", 0)),
-                        float(item["score"]) if item.get("score") is not None else None,
+                        # The demo schema declares submission_grades.score NOT
+                        # NULL, and read-time aggregation only averages rows
+                        # with status='graded', so missing scores persist as 0.
+                        float(item["score"]) if item.get("score") is not None else 0.0,
                         int(item["time_spent_seconds"]) if item.get("time_spent_seconds") is not None else None,
                         str(item.get("status", "graded")),
                         str(item.get("feedback", "")),
@@ -459,8 +462,8 @@ class LearningRepository:
             cursor.execute(
                 """
                 SELECT COUNT(DISTINCT question_position) AS graded_questions,
-                       SUM(CASE WHEN status <> 'graded' OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
-                       AVG(CASE WHEN status='graded' THEN score ELSE NULL END) AS average_score
+                       SUM(CASE WHEN status NOT IN ('graded','code_structure_error','function_not_found') OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
+                       AVG(CASE WHEN status IN ('graded','code_structure_error','function_not_found') THEN score ELSE NULL END) AS average_score
                 FROM submission_grades
                 WHERE submission_id=%s
                 """,
@@ -471,8 +474,10 @@ class LearningRepository:
             pending_questions = int(grade_summary.get("pending_questions") or 0)
             average_score = grade_summary.get("average_score")
         # A result is available only after every assignment question has a
-        # persisted graded row.  Programming questions may contribute a
+        # persisted terminal row.  Programming questions may contribute a
         # weighted partial score; objective questions remain 100/0.
+        # code_structure_error / function_not_found are terminal zero-score
+        # outcomes, so they count toward the average instead of blocking it.
         if pending_questions or graded_questions < total_questions or average_score is None:
             return None
         if total_questions <= 0:
@@ -847,23 +852,185 @@ class LearningRepository:
             )
         self.connection.commit()
 
-    def list_audits(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_audits(
+        self,
+        limit: int = 100,
+        category: str = "all",
+        keyword: str = "",
+        action_filter: str = "",
+        date_from: str = "",
+        date_to_exclusive: str = "",
+        offset: int = 0,
+        include_total: bool = False,
+        student_class_id: str = "",
+        teacher_username: str = "",
+    ) -> list[dict[str, Any]] | dict[str, Any]:
+        conditions: list[str] = []
+        parameters: list[Any] = []
+        if category == "login":
+            conditions.append("action IN (%s, %s, %s, %s)")
+            parameters.extend([
+                "student.login.success", "teacher.login.success", "admin.login.success", "logout.manual",
+            ])
+        elif category in {"assignment", "submission"}:
+            conditions.append("(action LIKE %s OR action LIKE %s)")
+            parameters.extend(["assignment.%", "submission.%"])
+        elif category == "account":
+            conditions.append("(action LIKE %s OR action IN (%s, %s, %s))")
+            parameters.extend(["account.%", "class.members.update", "class.student.create", "class.students.import"])
+        elif category == "other":
+            conditions.append(
+                "action NOT IN (%s, %s, %s, %s) AND action NOT LIKE %s AND action NOT LIKE %s "
+                "AND action NOT LIKE %s AND action NOT IN (%s, %s, %s)"
+            )
+            parameters.extend([
+                "student.login.success", "teacher.login.success", "admin.login.success", "logout.manual",
+                "assignment.%", "submission.%", "account.%",
+                "class.members.update", "class.student.create", "class.students.import",
+            ])
+
+        # Teacher-facing audit queries are scoped to students actively enrolled
+        # in the selected class and a teacher who is actively assigned to it.
+        # Login/logout events are student-account events; submission events are
+        # additionally tied to an assignment belonging to this class.
+        if bool(student_class_id) != bool(teacher_username):
+            raise ValueError("Teacher student audit scope requires both a class and teacher identity")
+        teacher_student_scope = bool(student_class_id and teacher_username)
+        if teacher_student_scope:
+            conditions.append(
+                "actor_role = %s AND EXISTS ("
+                "SELECT 1 FROM classes_student audit_cs "
+                "INNER JOIN classes_teacher audit_ct ON audit_ct.class_id = audit_cs.class_id "
+                "INNER JOIN classes audit_class ON audit_class.id = audit_cs.class_id "
+                "WHERE audit_cs.student_username = audit_logs.actor_username "
+                "AND audit_cs.class_id = %s AND audit_ct.class_id = %s "
+                "AND audit_ct.teacher_username = %s AND audit_cs.is_active = 1 "
+                "AND audit_ct.is_active = 1 AND audit_class.is_active = 1)"
+            )
+            parameters.extend(["student", student_class_id, student_class_id, teacher_username])
+            conditions.append(
+                "(action IN (%s, %s) OR (action LIKE %s AND EXISTS ("
+                "SELECT 1 FROM assignments audit_student_assignment "
+                "WHERE audit_student_assignment.id = CAST(JSON_UNQUOTE(JSON_EXTRACT("
+                "CASE WHEN JSON_VALID(audit_logs.detail_json) THEN audit_logs.detail_json ELSE '{}' END, "
+                "'$.assignment_id')) AS UNSIGNED) AND (audit_student_assignment.class_id = %s OR ("
+                "audit_student_assignment.class_id IS NULL AND EXISTS ("
+                "SELECT 1 FROM classes_teacher audit_owner_teacher "
+                "WHERE audit_owner_teacher.class_id = %s "
+                "AND audit_owner_teacher.teacher_username = audit_student_assignment.owner_username "
+                "AND audit_owner_teacher.is_active = 1))))))"
+            )
+            parameters.extend(["student.login.success", "logout.manual", "submission.%", student_class_id, student_class_id])
+
+        if action_filter:
+            conditions.append("action = %s")
+            parameters.append(action_filter)
+
+        if keyword:
+            pattern = f"%{keyword}%"
+            name_condition = " OR EXISTS (SELECT 1 FROM user_students audit_student WHERE audit_student.username = audit_logs.actor_username AND audit_student.name LIKE %s)" if teacher_student_scope else ""
+            conditions.append(
+                "(actor_username LIKE %s OR actor_role LIKE %s OR action LIKE %s "
+                "OR resource_type LIKE %s OR resource_id LIKE %s OR detail_json LIKE %s "
+                f"{name_condition} "
+                "OR (action LIKE %s AND EXISTS ("
+                "SELECT 1 FROM assignments audit_assignment "
+                "WHERE audit_assignment.id = CAST(audit_logs.resource_id AS UNSIGNED) "
+                "AND audit_assignment.title LIKE %s)) "
+                "OR (action LIKE %s AND EXISTS ("
+                "SELECT 1 FROM assignments audit_assignment "
+                "WHERE audit_assignment.id = CAST(JSON_UNQUOTE(JSON_EXTRACT("
+                "CASE WHEN JSON_VALID(audit_logs.detail_json) THEN audit_logs.detail_json ELSE '{}' END, "
+                "'$.assignment_id')) AS UNSIGNED) AND audit_assignment.title LIKE %s)))"
+            )
+            parameters.extend([pattern] * 6)
+            if teacher_student_scope:
+                parameters.append(pattern)
+            parameters.extend(["assignment.%", pattern, "submission.%", pattern])
+        if date_from:
+            conditions.append("created_at >= %s")
+            parameters.append(f"{date_from} 00:00:00")
+        if date_to_exclusive:
+            conditions.append("created_at < %s")
+            parameters.append(f"{date_to_exclusive} 00:00:00")
+
+        where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        safe_limit = max(1, min(limit, 500))
+        safe_offset = max(0, int(offset))
         with self.connection.cursor() as cursor:
+            total = None
+            if include_total:
+                cursor.execute(f"SELECT COUNT(*) AS total FROM audit_logs {where_sql}", parameters)
+                total_row = cursor.fetchone() or {}
+                total = int(total_row.get("total", 0))
             cursor.execute(
-                "SELECT id, actor_username, actor_role, action, resource_type, resource_id, detail_json, created_at FROM audit_logs ORDER BY id DESC LIMIT %s",
-                (max(1, min(limit, 500)),),
+                f"SELECT audit_logs.id, actor_username, actor_role, action, resource_type, resource_id, detail_json, created_at "
+                f"FROM audit_logs {where_sql} ORDER BY audit_logs.id DESC LIMIT %s OFFSET %s",
+                [*parameters, safe_limit, safe_offset],
             )
             rows = cursor.fetchall()
-        return [
-            {
-                "id": int(row["id"]),
-                "actor_username": row["actor_username"],
-                "actor_role": row["actor_role"],
-                "action": row["action"],
-                "resource_type": row["resource_type"],
-                "resource_id": row["resource_id"],
-                "detail": _loads(row["detail_json"], {}),
-                "created_at": row["created_at"].isoformat() if row["created_at"] else "",
-            }
-            for row in rows
-        ]
+            records = [
+                {
+                    "id": int(row["id"]),
+                    "actor_username": row["actor_username"],
+                    "actor_role": row["actor_role"],
+                    "action": row["action"],
+                    "resource_type": row["resource_type"],
+                    "resource_id": row["resource_id"],
+                    "detail": _loads(row["detail_json"], {}),
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else "",
+                }
+                for row in rows
+            ]
+
+            if teacher_student_scope and records:
+                usernames = list({str(record["actor_username"]) for record in records if record.get("actor_username")})
+                if usernames:
+                    placeholders = ", ".join(["%s"] * len(usernames))
+                    cursor.execute(
+                        f"SELECT username, name FROM user_students WHERE username IN ({placeholders})",
+                        tuple(usernames),
+                    )
+                    student_names = {str(row["username"]): row.get("name") or "" for row in cursor.fetchall()}
+                    for record in records:
+                        record["actor_name"] = student_names.get(str(record.get("actor_username") or ""), "")
+
+            # Older submission audit rows only stored assignment_id. Enrich their
+            # response from MySQL without rewriting the historical audit record.
+            assignment_ids: set[int] = set()
+            for record in records:
+                detail = record["detail"]
+                if not isinstance(detail, dict) or detail.get("assignment_title") or detail.get("title"):
+                    continue
+                if record["action"].startswith("assignment."):
+                    resource_id = str(record.get("resource_id") or "")
+                    if resource_id.isdigit():
+                        assignment_ids.add(int(resource_id))
+                elif record["action"].startswith("submission."):
+                    assignment_id = str(detail.get("assignment_id") or "")
+                    if assignment_id.isdigit():
+                        assignment_ids.add(int(assignment_id))
+            if assignment_ids:
+                placeholders = ", ".join(["%s"] * len(assignment_ids))
+                cursor.execute(
+                    f"SELECT id, title FROM assignments WHERE id IN ({placeholders})",
+                    tuple(assignment_ids),
+                )
+                titles = {int(row["id"]): row["title"] for row in cursor.fetchall()}
+                for record in records:
+                    detail = record["detail"]
+                    if not isinstance(detail, dict) or detail.get("assignment_title") or detail.get("title"):
+                        continue
+                    if record["action"].startswith("assignment."):
+                        assignment_id = record.get("resource_id")
+                    elif record["action"].startswith("submission."):
+                        assignment_id = detail.get("assignment_id")
+                    else:
+                        continue
+                    if str(assignment_id or "").isdigit():
+                        title = titles.get(int(assignment_id))
+                        if title:
+                            detail["assignment_title"] = title
+        if include_total:
+            return {"items": records, "total": total or 0}
+        return records

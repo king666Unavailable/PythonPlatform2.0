@@ -87,7 +87,13 @@ class SubmissionService:
                 submission["id"], result["status"], result["score"],
                 result["items"],
             )
-            repository.write_audit({"username": username, "role": "student"}, "submission.create", "submission", submission["id"], {"assignment_id": assignment_id})
+            repository.write_audit(
+                {"username": username, "role": "student"},
+                "submission.create",
+                "submission",
+                submission["id"],
+                {"assignment_id": assignment_id, "assignment_title": assignment.get("title", "")},
+            )
         effective_class_id = str(assignment.get("class_id") or class_id or "").strip()
         if result["status"] == "graded" and effective_class_id:
             try:

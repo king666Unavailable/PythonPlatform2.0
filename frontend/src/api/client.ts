@@ -490,15 +490,33 @@ export function confirmAdminAccountImport(token: string) {
   return request<{ created: number; accounts: Array<Record<string, unknown>> }>('/api/v1/admin/accounts/import/confirm', { method: 'POST', body: JSON.stringify({ token }) })
 }
 
-export function fetchAuditLogs() {
-  return request<{ items: Array<Record<string, unknown>> }>('/api/v1/admin/audit-logs')
+export function fetchAuditLogs(filters: { category?: string; action?: string; q?: string; from?: string; to?: string; limit?: number; page?: number } = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  })
+  const queryString = query.toString()
+  return request<{ items: Array<Record<string, unknown>>; meta: { total: number; page?: number; page_size?: number; total_pages?: number } }>(`/api/v1/admin/audit-logs${queryString ? `?${queryString}` : ''}`)
+}
+
+export function fetchTeacherStudentOperationLogs(filters: { action?: string; q?: string; from?: string; to?: string; page?: number } = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  })
+  const queryString = query.toString()
+  return request<{
+    items: Array<Record<string, unknown>>
+    class: { id: string; title: string; teaching_class: string; academic_year: string }
+    meta: { total: number; page: number; page_size: number; total_pages: number }
+  }>(`/api/v1/teacher/student-operation-logs${queryString ? `?${queryString}` : ''}`)
 }
 
 export function fetchAdminNavigationSettings() {
   return request<{ roles: Record<'student' | 'teacher', NavigationVisibilityItem[]> }>('/api/v1/admin/navigation-settings')
 }
 
-export function updateAdminNavigationSettings(role: 'student' | 'teacher', items: Array<{ id: string; is_visible: boolean }>) {
+export function updateAdminNavigationSettings(role: 'student' | 'teacher', items: Array<{ id: string; is_visible: boolean; sort_order: number }>) {
   return request<{ role: string; items: NavigationVisibilityItem[] }>('/api/v1/admin/navigation-settings', {
     method: 'PATCH',
     body: JSON.stringify({ role, items }),
