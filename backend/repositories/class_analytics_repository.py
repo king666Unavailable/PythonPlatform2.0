@@ -256,10 +256,15 @@ class MySQLClassAnalyticsRepository:
                 FROM user_students s
                 {join}
                 LEFT JOIN (
-                    SELECT student_username, COUNT(*) AS question_count,
-                           SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct_question_count
-                    FROM submission_details
-                    GROUP BY student_username
+                    SELECT s.student_username,
+                           COUNT(g.id) AS question_count,
+                           SUM(CASE WHEN COALESCE(g.score, 0) > 0 THEN 1 ELSE 0 END) AS correct_question_count
+                    FROM submissions s
+                    INNER JOIN submission_grades g ON g.submission_id=s.id
+                    WHERE s.status='graded'
+                      AND g.status='graded'
+                      AND g.score IS NOT NULL
+                    GROUP BY s.student_username
                 ) r ON r.student_username=s.username
                 WHERE {where}
                 ORDER BY s.username
@@ -290,10 +295,15 @@ class MySQLClassAnalyticsRepository:
                        COALESCE(r.correct_question_count, 0) AS correct_question_count
                 FROM user_students s
                 LEFT JOIN (
-                    SELECT student_username, COUNT(*) AS question_count,
-                           SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct_question_count
-                    FROM submission_details
-                    GROUP BY student_username
+                    SELECT s.student_username,
+                           COUNT(g.id) AS question_count,
+                           SUM(CASE WHEN COALESCE(g.score, 0) > 0 THEN 1 ELSE 0 END) AS correct_question_count
+                    FROM submissions s
+                    INNER JOIN submission_grades g ON g.submission_id=s.id
+                    WHERE s.status='graded'
+                      AND g.status='graded'
+                      AND g.score IS NOT NULL
+                    GROUP BY s.student_username
                 ) r ON r.student_username=s.username
                 WHERE s.username=%s OR CAST(s.id AS CHAR)=%s
                 LIMIT 1

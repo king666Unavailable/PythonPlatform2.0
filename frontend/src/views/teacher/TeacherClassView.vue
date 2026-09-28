@@ -77,7 +77,11 @@ function averagePoints(values: Record<string, unknown> | undefined): AveragePoin
 }
 
 const classAverage = computed(() => {
-  const values = Object.values(data.value?.summary?.averages?.homework ?? {}).map(Number).filter(Number.isFinite)
+  const averages = data.value?.summary?.averages ?? {}
+  const values = [
+    ...Object.values(averages.homework ?? {}),
+    ...Object.values(averages.classwork ?? {}),
+  ].map(Number).filter(Number.isFinite)
   return values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0
 })
 const homeworkAverages = computed(() => averagePoints(data.value?.summary?.averages?.homework))
