@@ -21,5 +21,6 @@ export interface KnowledgeGraphResponse {
   meta: {
     node_count: number
     edge_count: number
+    graph_configured?: boolean
   }
 }

@@ -194,6 +194,46 @@ class MySQLClassAnalyticsRepository:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
 
+    def get_alert_preferences(self, teacher_username: str, class_id: str) -> dict | None:
+        """Return teacher-specific alert rules, if configured for this class."""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT config_json FROM class_alert_preferences WHERE teacher_username=%s AND class_id=%s LIMIT 1",
+                    (teacher_username, class_id),
+                )
+                row = cursor.fetchone()
+        except Exception:
+            # Older deployments may not have applied the optional table yet;
+            # class analytics should continue to work with service defaults.
+            return None
+        if not row:
+            return None
+        try:
+            value = json.loads(row.get("config_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    def save_alert_preferences(self, teacher_username: str, class_id: str, config: dict) -> None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """CREATE TABLE IF NOT EXISTS class_alert_preferences (
+                    teacher_username varchar(64) NOT NULL,
+                    class_id varchar(64) NOT NULL,
+                    config_json longtext NOT NULL,
+                    updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (teacher_username, class_id),
+                    KEY idx_class_alert_preferences_class (class_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"""
+            )
+            cursor.execute(
+                """INSERT INTO class_alert_preferences (teacher_username, class_id, config_json)
+                   VALUES (%s, %s, %s)
+                   ON DUPLICATE KEY UPDATE config_json=VALUES(config_json), updated_at=CURRENT_TIMESTAMP""",
+                (teacher_username, class_id, json.dumps(config, ensure_ascii=False, separators=(",", ":"))),
+            )
+
     def find_students(self, class_id: str) -> tuple[ClassStudent, ...]:
         # Account status controls login only. Teachers retain historical visibility.
         clauses = ["COALESCE(s.stu_classify, '') <> ''"]

@@ -25,6 +25,7 @@ class ClassContextRepository:
             "teaching_class": row.get("teaching_class") or "",
             "academic_year": row.get("academic_year") or "",
             "teacher_name": row.get("teacher_name") or "",
+            "graph_class_id": str(row["graph_class_id"]) if row.get("graph_class_id") is not None else None,
             "enrollment_type": enrollment_type or row.get("enrollment_type") or "normal",
         }
 
@@ -35,7 +36,7 @@ class ClassContextRepository:
         join = f"JOIN {relation} sc ON sc.class_id=c.id AND sc.{field}=%s AND sc.is_active=1"
         with self.connection.cursor() as cursor:
             cursor.execute(
-                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,{enrollment}
+                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.graph_class_id,{enrollment}
                     FROM classes c {join} WHERE c.is_active=1 ORDER BY c.academic_year DESC,c.id DESC""",
                 (username,),
             )

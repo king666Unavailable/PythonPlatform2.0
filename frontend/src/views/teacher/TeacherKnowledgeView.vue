@@ -32,6 +32,7 @@ const expanded = ref(new Set<string>())
 const loading = ref(true)
 const detailLoading = ref(false)
 const structureInitialized = ref(false)
+const graphConfigured = ref(false)
 const error = ref('')
 const success = ref('')
 const graphElement = ref<HTMLElement | null>(null)
@@ -164,6 +165,7 @@ async function load() {
   error.value = ''
   try {
     const result = await fetchKnowledgeManagementStructure()
+    graphConfigured.value = result.meta.graph_configured !== false
     nodes.value = result.graph.nodes
     edges.value = result.graph.edges
     const available = new Set(nodes.value.map((node) => node.id))
@@ -299,7 +301,7 @@ onBeforeUnmount(() => network?.destroy())
 <template>
   <div class="page-stack">
     <PageHeader title="知识图谱管理">
-      <template #actions><button type="button" @click="openCreate">新增节点</button></template>
+      <template #actions><button type="button" :disabled="!graphConfigured" :title="graphConfigured ? '新增知识节点' : '当前教学班未配置知识图谱'" @click="openCreate">新增节点</button></template>
     </PageHeader>
     <InlineMessage :message="error" tone="error" />
     <InlineMessage :message="success" tone="success" />
@@ -312,7 +314,11 @@ onBeforeUnmount(() => network?.destroy())
     </section>
 
     <section class="knowledge-management-layout">
-      <section v-if="viewMode === 'tree'" class="content-card knowledge-management-tree-card">
+    <section v-if="!loading && !error && !graphConfigured" class="content-card graph-unconfigured-card">
+      <EmptyState title="当前教学班未配置知识图谱" description="暂时无法管理知识节点，请联系管理员在教学班管理中为当前教学班选择知识图谱。" />
+    </section>
+
+    <section v-else-if="viewMode === 'tree'" class="content-card knowledge-management-tree-card">
         <div class="section-heading"><div><h3>课程知识结构</h3><p>{{ treeRows.length }} 个节点</p></div></div>
         <div v-if="loading" class="loading-state">正在加载知识结构…</div>
         <div v-else-if="treeRows.length" class="knowledge-management-tree" role="tree">
@@ -326,7 +332,7 @@ onBeforeUnmount(() => network?.destroy())
         <EmptyState v-else title="没有匹配节点" description="调整搜索词或节点层级后重试。" />
       </section>
 
-      <section v-else class="content-card knowledge-management-graph-card">
+    <section v-else class="content-card knowledge-management-graph-card">
         <div class="section-heading"><div><h3>知识图谱</h3><p>{{ graphNodes.length }} 个节点 · {{ graphEdges.length }} 条关系</p></div><span class="knowledge-management-graph-hint">拖拽节点查看结构，滚轮缩放，点击节点查看详情</span></div>
         <div v-if="loading" class="loading-state">正在加载知识结构…</div>
         <div v-else-if="graphNodes.length" ref="graphElement" class="knowledge-management-graph" role="img" aria-label="教师知识图谱" />

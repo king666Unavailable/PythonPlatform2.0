@@ -7,6 +7,9 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
+from domain.assignment_rules import is_assignment_visible_to_student
+from domain.question_types import is_programming_question_type
+from domain.submission_scoring import calculate_submission_score
 from .mysql_connection import create_mysql_connection
 
 
@@ -95,8 +98,8 @@ class MySQLLearningProfileRepository:
         class_habits = self._class_habit_metrics(assignments, class_records)
         class_ability = self._class_ability_metrics(class_records, question_meta)
         scores = [item["score"] for item in records if item.get("score") is not None and item.get("submitted_at")]
-        overall_values = [value for value in (progress["score"], habits["score"], ability["score"]) if value is not None]
-        overall_score = _clamp(sum(overall_values) / len(overall_values)) if overall_values else None
+        radar_values = [progress["radar_score"], habits["radar_score"], ability["radar_score"]]
+        overall_score = _clamp(sum(radar_values) / len(radar_values))
 
         return {
             "student": {
@@ -110,9 +113,9 @@ class MySQLLearningProfileRepository:
             "overview": {
                 "overall_score": overall_score,
                 "dimensions": {
-                    "progress": progress["score"],
-                    "habit": habits["score"],
-                    "ability": ability["score"],
+                    "progress": progress["radar_score"],
+                    "habit": habits["radar_score"],
+                    "ability": ability["radar_score"],
                 },
                 "class_average": {
                     "progress": class_progress,
@@ -139,7 +142,6 @@ class MySQLLearningProfileRepository:
                 "class_name": class_name,
                 "generated_at": datetime.now().isoformat(timespec="seconds"),
                 "random_placeholder_data": False,
-                "programming_grading_note": "编程题判卷未完成时不计入正确率，pending_test_cases 和 grading_unavailable 不计为错误。",
             },
         }
 
@@ -154,12 +156,12 @@ class MySQLLearningProfileRepository:
                ORDER BY COALESCE(NULLIF(deadline,''),'0000-00-00') DESC, id DESC""",
             (class_id, class_id),
         )
-        return [dict(row) for row in cursor.fetchall() if MySQLLearningProfileRepository._is_available(row, username)]
+        return [dict(row) for row in cursor.fetchall() if is_assignment_visible_to_student(dict(row), username)]
 
     @staticmethod
     def _student_submissions(cursor, username: str) -> list[dict[str, Any]]:
         cursor.execute(
-            """SELECT id, assignment_id, status, submitted_at, updated_at, answers_json,
+            """SELECT id, assignment_id, status, score, submitted_at, updated_at, answers_json,
                       time_spent_json, attempt_no
                FROM submissions WHERE student_username=%s
                ORDER BY assignment_id, attempt_no DESC, updated_at DESC""",
@@ -224,7 +226,7 @@ class MySQLLearningProfileRepository:
             return []
         placeholders = ",".join(["%s"] * len(usernames))
         cursor.execute(
-            f"""SELECT id, student_username, assignment_id, status, submitted_at, updated_at,
+            f"""SELECT id, student_username, assignment_id, status, score, submitted_at, updated_at,
                        answers_json, time_spent_json, attempt_no
                 FROM submissions WHERE student_username IN ({placeholders})
                 ORDER BY student_username, assignment_id, attempt_no DESC, updated_at DESC""",
@@ -274,7 +276,11 @@ class MySQLLearningProfileRepository:
             graded = [item for item in items if item.get("status") == "graded" and item.get("score") is not None]
             answers = _loads((submission or {}).get("answers_json"), {})
             time_spent = _loads((submission or {}).get("time_spent_json"), {})
-            score = cls._submission_score(graded, len(question_meta.get(aid, {}))) if submission and submission.get("status") == "graded" else None
+            score = calculate_submission_score(
+                items,
+                len(question_meta.get(aid, {})),
+                submission.get("score") if submission and submission.get("status") == "graded" else None,
+            )
             records.append({
                 "assignment_id": aid,
                 "title": assignment["title"],
@@ -319,19 +325,13 @@ class MySQLLearningProfileRepository:
                     "time_spent": _loads((submission or {}).get("time_spent_json"), {}) if isinstance(_loads((submission or {}).get("time_spent_json"), {}), dict) else {},
                     "grades": graded,
                     "question_meta": question_meta.get(aid, {}),
-                    "score": cls._submission_score(graded, len(question_meta.get(aid, {}))) if submission and submission.get("status") == "graded" else None,
+                    "score": calculate_submission_score(
+                        items,
+                        len(question_meta.get(aid, {})),
+                        submission.get("score") if submission and submission.get("status") == "graded" else None,
+                    ),
                 })
         return result
-
-    @staticmethod
-    def _submission_score(graded: list[dict[str, Any]], question_count: int) -> float | None:
-        if not graded or not question_count:
-            return None
-        # Programming/partial grading is intentionally excluded until its grading rules are complete.
-        if any(str(item.get("provider") or "objective") not in {"objective", "legacy_relation"} for item in graded):
-            return None
-        wrong = sum(1 for item in graded if float(item.get("score") or 0) <= 0)
-        return _clamp(100 - (100 / question_count * wrong))
 
     @classmethod
     def _progress_metrics(cls, records, mastery_rows):
@@ -339,8 +339,9 @@ class MySQLLearningProfileRepository:
         mastery = _number(course_rows[0].get("mastery_score")) if course_rows else None
         scored = [float(item["score"]) for item in records if item.get("score") is not None]
         average_score = sum(scored) / len(scored) if scored else None
-        score = _clamp((mastery * 0.7 + average_score * 0.3) if mastery is not None and average_score is not None else mastery if mastery is not None else average_score) if (mastery is not None or average_score is not None) else None
-        return {"score": score, "knowledge_mastery": _clamp(mastery) if mastery is not None else None, "scored_assignment_count": len(scored), "average_score": _clamp(average_score) if average_score is not None else None}
+        score = _clamp(mastery * 0.7 + average_score * 0.3) if mastery is not None and average_score is not None else None
+        radar_score = _clamp((mastery or 0.0) * 0.7 + (average_score or 0.0) * 0.3)
+        return {"score": score, "radar_score": radar_score, "knowledge_mastery": _clamp(mastery) if mastery is not None else None, "scored_assignment_count": len(scored), "average_score": _clamp(average_score) if average_score is not None else None}
 
     @classmethod
     def _habit_metrics(cls, assignments, records, questionnaire):
@@ -354,51 +355,41 @@ class MySQLLearningProfileRepository:
         regularity = _clamp(active_days / 20 * 100) if submitted else None
         average_time = sum(timed) / len(timed) if timed else None
         time_score = _clamp(average_time / 300 * 100) if average_time is not None else None
-        parts = [submission_rate * 0.45]
-        if on_time_rate is not None:
-            parts.append(on_time_rate * 0.25)
-        if regularity is not None:
-            parts.append(regularity * 0.15)
-        if time_score is not None:
-            parts.append(time_score * 0.15)
-        score = _clamp(sum(parts) / (0.45 + (0.25 if on_time_rate is not None else 0) + (0.15 if regularity is not None else 0) + (0.15 if time_score is not None else 0))) if total else None
-        return {"score": score, "submission_rate": _clamp(submission_rate), "on_time_rate": _clamp(on_time_rate) if on_time_rate is not None else None, "active_days": active_days, "average_question_seconds": round(average_time) if average_time is not None else None, "questionnaire_completed": bool((questionnaire or {}).get("is_completed")), "available_assignment_count": total}
+        score = _clamp(
+            submission_rate * 0.45
+            + (on_time_rate or 0.0) * 0.25
+            + (regularity or 0.0) * 0.15
+            + (time_score or 0.0) * 0.15
+        ) if total else None
+        radar_score = score if score is not None else 0.0
+        return {"score": score, "radar_score": radar_score, "submission_rate": _clamp(submission_rate), "on_time_rate": _clamp(on_time_rate) if on_time_rate is not None else None, "active_days": active_days, "average_question_seconds": round(average_time) if average_time is not None else None, "questionnaire_completed": bool((questionnaire or {}).get("is_completed")), "available_assignment_count": total}
 
     @classmethod
     def _ability_metrics(cls, records, question_meta):
-        objective_providers = {None, "", "objective", "legacy_relation"}
-        programming_providers = {"manual", "piston", "programming"}
         type_values: dict[str, list[float]] = {code: [] for code in ("1", "2", "3", "4")}
-        objective = []
-        programming = []
+        objective_scores: list[float] = []
+        programming_scores: list[float] = []
         difficulty_groups: dict[str, list[float]] = defaultdict(list)
-        type_groups: dict[str, list[float]] = defaultdict(list)
         for record in records:
             for item in record.get("grades", []):
                 meta = record.get("question_meta", {}).get(int(item["question_position"]), {})
                 type_code = str(meta.get("question_type") or "").strip().lower()
-                provider = item.get("provider")
-                if type_code in {"1", "2"} and provider in objective_providers:
-                    objective.append(item)
-                    type_values[type_code].append(100 if float(item.get("score") or 0) > 0 else 0)
-                elif type_code in {"3", "4"} and provider in programming_providers:
-                    programming.append(item)
-                    type_values[type_code].append(100 if float(item.get("score") or 0) > 0 else 0)
+                score = _clamp(float(item.get("score") or 0))
+                if type_code in {"1", "2"}:
+                    objective_scores.append(score)
+                    type_values[type_code].append(score)
+                elif type_code in {"3", "4"}:
+                    programming_scores.append(score)
+                    type_values[type_code].append(score)
                 else:
                     continue
                 bucket = cls._difficulty_bucket(meta.get("difficulty"))
                 if bucket:
-                    difficulty_groups[bucket].append(100 if float(item.get("score") or 0) > 0 else 0)
-                qtype = meta.get("question_type") or "其他题型"
-                type_groups[qtype].append(100 if float(item.get("score") or 0) > 0 else 0)
-        programming_included = any(
-            cls._is_programming_type(meta.get("question_type"))
-            for record in records
-            for meta in record.get("question_meta", {}).values()
-        )
-        if not objective and not programming:
+                    difficulty_groups[bucket].append(score)
+        if not objective_scores and not programming_scores:
             return {
                 "score": None,
+                "radar_score": 0.0,
                 "objective_accuracy": None,
                 "subjective_accuracy": None,
                 "difficulty_accuracy": [],
@@ -406,24 +397,26 @@ class MySQLLearningProfileRepository:
                     {"label": code, "accuracy": None, "count": 0} for code in type_values
                 ],
                 "high_difficulty_accuracy": None,
-                "programming_included": programming_included,
             }
-        accuracy = sum(1 for item in objective if float(item.get("score") or 0) > 0) / len(objective) * 100 if objective else None
-        programming_accuracy = sum(1 for item in programming if float(item.get("score") or 0) > 0) / len(programming) * 100 if programming else None
+        accuracy = sum(objective_scores) / len(objective_scores) if objective_scores else None
+        programming_accuracy = sum(programming_scores) / len(programming_scores) if programming_scores else None
         difficulty = [{"label": key, "accuracy": _clamp(sum(values) / len(values)), "count": len(values)} for key, values in difficulty_groups.items()]
         type_accuracy = [
             {"label": key, "accuracy": _clamp(sum(values) / len(values)) if values else None, "count": len(values)}
             for key, values in type_values.items()
         ]
         high = next((item["accuracy"] for item in difficulty if item["label"] == "高难度"), None)
+        dimension_scores = [value for value in (accuracy, programming_accuracy) if value is not None]
+        complete_score = _clamp(sum(dimension_scores) / len(dimension_scores)) if len(dimension_scores) == 2 else None
+        radar_score = _clamp((accuracy or 0.0) * 0.5 + (programming_accuracy or 0.0) * 0.5)
         return {
-            "score": _clamp(accuracy) if accuracy is not None else _clamp(programming_accuracy) if programming_accuracy is not None else None,
+            "score": complete_score,
+            "radar_score": radar_score,
             "objective_accuracy": _clamp(accuracy) if accuracy is not None else None,
             "subjective_accuracy": _clamp(programming_accuracy) if programming_accuracy is not None else None,
             "difficulty_accuracy": difficulty,
             "question_type_accuracy": type_accuracy,
             "high_difficulty_accuracy": high,
-            "programming_included": programming_included,
         }
 
     @classmethod
@@ -445,10 +438,15 @@ class MySQLLearningProfileRepository:
 
     @classmethod
     def _class_ability_metrics(cls, records, question_meta):
-        graded = [item for record in records for item in record.get("grades", []) if item.get("provider") in {None, "", "objective", "legacy_relation"}]
-        if not graded:
+        graded_scores = []
+        for record in records:
+            for item in record.get("grades", []):
+                meta = record.get("question_meta", {}).get(int(item["question_position"]), {})
+                if str(meta.get("question_type") or "").strip().lower() in {"1", "2", "3", "4"}:
+                    graded_scores.append(float(item.get("score") or 0))
+        if not graded_scores:
             return {"score": None}
-        return {"score": _clamp(sum(1 for item in graded if float(item.get("score") or 0) > 0) / len(graded) * 100)}
+        return {"score": _clamp(sum(graded_scores) / len(graded_scores))}
 
     @staticmethod
     def _weak_points(rows):
@@ -461,18 +459,6 @@ class MySQLLearningProfileRepository:
         return bool(submitted and (deadline is None or submitted <= deadline))
 
     @staticmethod
-    def _is_available(assignment: dict[str, Any], username: str) -> bool:
-        state = str(assignment.get("open_state") or "yes").strip().lower()
-        if state in {"no", "closed"}:
-            return False
-        if state not in {"some", "targeted", "specific"}:
-            return True
-        targets = _loads(assignment.get("target_usernames_json"), [])
-        if isinstance(targets, str):
-            targets = [part.strip() for part in targets.replace("，", ",").replace("\n", ",").split(",")]
-        return username in {str(target).strip() for target in targets if str(target).strip()}
-
-    @staticmethod
     def _difficulty_bucket(value):
         if value is None:
             return None
@@ -481,10 +467,6 @@ class MySQLLearningProfileRepository:
         if value <= 6:
             return "中难度"
         return "高难度"
-
-    @staticmethod
-    def _is_programming_type(value):
-        return str(value or "").strip().lower() in {"3", "4", "code", "programming", "blank_code", "code_fill", "程序题", "编程题", "程序填空题"}
 
     @staticmethod
     def _gender_label(value):

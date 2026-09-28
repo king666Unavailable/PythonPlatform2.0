@@ -28,6 +28,7 @@ const graphElement = ref<HTMLElement | null>(null)
 let network: Network | null = null
 const DEFAULT_GRAPH_SCALE = 1
 const DEFAULT_GRAPH_POSITION = { x: 0, y: 0 }
+const graphConfigured = computed(() => graph.value?.meta.graph_configured !== false)
 
 const masteryByGraphNodeId = computed(() => new Map(
   (mastery.value?.nodes ?? [])
@@ -158,6 +159,11 @@ async function load() {
   error.value = ''
   try {
     graph.value = await fetchKnowledgeGraph()
+    if (graph.value.meta.graph_configured === false) {
+      mastery.value = null
+      loading.value = false
+      return
+    }
     try {
       mastery.value = await fetchStudentMastery()
     } catch (cause) {
@@ -181,7 +187,7 @@ onBeforeUnmount(() => network?.destroy())
     <PageHeader title="知识图谱" />
     <InlineMessage :message="error" tone="error" />
     <div v-if="loading" class="loading-state">正在加载知识图谱…</div>
-    <section v-else-if="graph" class="knowledge-path-layout">
+    <section v-else-if="graph && graphConfigured" class="knowledge-path-layout">
       <div class="knowledge-path-graph-card">
         <div class="knowledge-path-card-heading">
           <div>
@@ -237,6 +243,9 @@ onBeforeUnmount(() => network?.destroy())
           <div class="learning-path-section"><h4 class="path-after">↓ 后置知识点</h4><div class="learning-path-nodes"><span v-for="node in subsequentNodes" :key="node.id">{{ node.label }}</span><em v-if="!subsequentNodes.length">暂无</em></div></div>
         </section>
       </div>
+    </section>
+    <section v-else-if="graph && !graphConfigured" class="content-card graph-unconfigured-card">
+      <EmptyState title="当前教学班未配置知识图谱" description="暂时无法查看个人知识掌握度，请联系管理员在教学班管理中为当前教学班选择知识图谱。" />
     </section>
     <EmptyState v-else title="暂时没有知识内容" description="请稍后再试。" />
   </div>

@@ -10,6 +10,17 @@ from apps.context.services import CurrentClassService
 from .services import ClassMasteryBackendUnavailable, ClassMasteryService, LearningProfileBackendUnavailable, LearningProfileNotFound, LearningProfileService, MasteryBackendUnavailable, MasteryService
 
 
+def _with_graph_status(payload: dict, current_class: dict) -> dict:
+    """Expose graph configuration separately from an empty mastery result."""
+
+    result = dict(payload)
+    result["meta"] = {
+        **dict(payload.get("meta") or {}),
+        "graph_configured": bool(current_class.get("graph_class_id")),
+    }
+    return result
+
+
 @api_view(["GET"])
 @permission_classes([IsStudent])
 def current_mastery(request):
@@ -25,7 +36,7 @@ def current_mastery(request):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
-    return Response(mastery.public_dict())
+    return Response(_with_graph_status(mastery.public_dict(), current_class))
 
 
 @api_view(["GET"])
@@ -43,7 +54,24 @@ def current_class_mastery(request):
             {"message": "班级知识掌握度服务暂不可用，请检查 MySQL 配置。", "code": "CLASS_MASTERY_BACKEND_UNAVAILABLE"},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    return Response(report)
+    return Response(_with_graph_status(report, current_class))
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacher])
+def refresh_current_class_mastery(request):
+    """Rebuild mastery snapshots for the teacher's current teaching class."""
+
+    current_class = CurrentClassService().require(request)
+    try:
+        result = ClassMasteryService().refresh_for_class(str(current_class["id"]))
+        report = ClassMasteryService().get_for_class(str(current_class["id"]))
+    except ClassMasteryBackendUnavailable:
+        return Response(
+            {"message": "班级知识掌握度计算失败，请检查 MySQL 配置。", "code": "CLASS_MASTERY_REFRESH_UNAVAILABLE"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response({"message": "知识掌握度计算完成。", "refresh": result, "report": _with_graph_status(report, current_class)})
 
 
 @api_view(["GET"])

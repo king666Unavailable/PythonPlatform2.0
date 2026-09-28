@@ -25,15 +25,43 @@ def _unavailable() -> Response:
     )
 
 
+def _pagination_params(request) -> tuple[int, int]:
+    try:
+        page = max(1, int(request.query_params.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size", 20))
+    except (TypeError, ValueError):
+        page_size = 20
+    return page, min(max(page_size, 1), 100)
+
+
 @api_view(["GET"])
 @permission_classes([IsTeacher])
 def class_analytics(request, class_id: str):
     try:
         user = session_user(request)
         selected_class = CurrentClassService().require_access(request, class_id)
-        return Response(TeacherAnalyticsService().get_class_analytics(selected_class["id"], user["username"]))
+        page, page_size = _pagination_params(request)
+        return Response(TeacherAnalyticsService().get_class_analytics(selected_class["id"], user["username"], page, page_size))
     except TeacherAnalyticsNotFound:
         return _not_found("没有找到对应班级的统计数据。")
+    except TeacherAnalyticsBackendUnavailable:
+        return _unavailable()
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsTeacher])
+def class_alert_preferences(request):
+    try:
+        user = session_user(request)
+        current = CurrentClassService().require(request)
+        if request.method == "PUT":
+            config = TeacherAnalyticsService.save_alert_preferences(current["id"], user["username"], request.data)
+        else:
+            config = TeacherAnalyticsService.get_alert_preferences(current["id"], user["username"])
+        return Response({"class_id": current["id"], "config": config})
     except TeacherAnalyticsBackendUnavailable:
         return _unavailable()
 

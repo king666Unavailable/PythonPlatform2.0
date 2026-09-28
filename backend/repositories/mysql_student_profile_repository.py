@@ -6,6 +6,9 @@ import json
 from collections import defaultdict
 from typing import Any
 
+from domain.assignment_rules import is_assignment_visible_to_student
+from domain.question_types import is_programming_question_type
+from domain.submission_scoring import calculate_submission_score
 from .mysql_connection import create_mysql_connection
 
 
@@ -22,8 +25,6 @@ def _iso(value: Any) -> str:
 
 class MySQLStudentProfileRepository:
     """Build the student-facing profile entirely from MySQL tables."""
-
-    _OBJECTIVE_PROVIDERS = {"objective", "legacy_relation"}
 
     def __init__(self) -> None:
         self.connection = create_mysql_connection()
@@ -77,7 +78,7 @@ class MySQLStudentProfileRepository:
 
             cursor.execute(
                 """
-                SELECT id, assignment_id, attempt_no, status, answers_json,
+                SELECT id, assignment_id, attempt_no, status, score, answers_json,
                        submitted_at, updated_at
                 FROM submissions
                 WHERE student_username=%s
@@ -140,7 +141,7 @@ class MySQLStudentProfileRepository:
 
         records = []
         for assignment in assignments:
-            if not self._is_available(assignment, username):
+            if not is_assignment_visible_to_student(assignment, username):
                 continue
             assignment_id = str(assignment["id"])
             submission = latest_submissions.get(assignment_id)
@@ -226,19 +227,17 @@ class MySQLStudentProfileRepository:
         programming_positions = {
             position
             for position, metadata in question_meta.items()
-            if cls._is_programming_type(metadata.get("question_type"))
+            if is_programming_question_type(metadata.get("question_type"))
         }
         objective_items = [
             item
             for item in graded_items
             if int(item["question_position"]) not in programming_positions
-            and (item.get("provider") or "objective") in cls._OBJECTIVE_PROVIDERS
         ]
         code_items = [
             item
             for item in graded_items
             if int(item["question_position"]) in programming_positions
-            or (item.get("provider") or "objective") not in cls._OBJECTIVE_PROVIDERS
         ]
         correct_questions = sum(1 for item in objective_items if float(item.get("score") or 0) > 0)
         wrong_questions = sum(1 for item in objective_items if float(item.get("score") or 0) <= 0)
@@ -257,9 +256,14 @@ class MySQLStudentProfileRepository:
             if code_items
             else None
         )
-        score = None
-        if submission_status == "已完成" and total_questions > 0 and not programming_positions and not code_items:
-            score = round(max(0.0, min(100.0, 100 - (100 / total_questions * wrong_questions))), 1)
+        # The assignment total is the persisted submission result.  Do not
+        # recompute it from provider labels here: imported, manual and remote
+        # grading sources all use the same submission score once graded.
+        score = calculate_submission_score(
+            grade_items,
+            total_questions,
+            submission.get("score") if submission_status == "已完成" and submission else None,
+        )
 
         answers = _loads((submission or {}).get("answers_json"), {})
         answered_questions = cls._answered_count(answers)
@@ -305,21 +309,6 @@ class MySQLStudentProfileRepository:
         return "不及格"
 
     @staticmethod
-    def _is_programming_type(value: Any) -> bool:
-        normalized = str(value or "").strip().lower()
-        return normalized in {
-            "3",
-            "4",
-            "code",
-            "programming",
-            "blank_code",
-            "code_fill",
-            "程序题",
-            "编程题",
-            "程序填空题",
-        }
-
-    @staticmethod
     def _gender_label(value: Any) -> str:
         if value in (1, "1"):
             return "男"
@@ -329,16 +318,3 @@ class MySQLStudentProfileRepository:
             return "其他"
         return "未填写"
 
-    @staticmethod
-    def _is_available(assignment: dict[str, Any], username: str) -> bool:
-        if str(assignment.get("status") or "") not in {"published", "active", ""}:
-            return False
-        state = str(assignment.get("open_state") or "yes").lower()
-        if state in {"no", "closed"}:
-            return False
-        if state not in {"some", "targeted", "specific"}:
-            return True
-        targets = _loads(assignment.get("target_usernames_json"), [])
-        if isinstance(targets, str):
-            targets = [part.strip() for part in targets.replace("，", ",").replace("\n", ",").split(",")]
-        return username in {str(target).strip() for target in targets if str(target).strip()}

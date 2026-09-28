@@ -3,11 +3,57 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 
+from domain.assignment_rules import is_assignment_visible_to_student
+from domain.submission_scoring import calculate_submission_score
 from repositories.class_analytics_repository import ClassStudent, MySQLClassAnalyticsRepository
 
 
 logger = logging.getLogger("teacher")
+
+
+DEFAULT_ALERT_RULES = {
+    "need_care": {
+        "unsubmitted_count": {"enabled": True, "threshold": 1},
+        "average_score_below": {"enabled": False, "threshold": 60},
+        "fail_rate_above": {"enabled": True, "threshold": 50},
+        "low_score_count": {"enabled": False, "threshold": 2},
+        "consecutive_unsubmitted": {"enabled": False, "threshold": 2},
+    },
+    "excellent": {
+        "average_score_above": {"enabled": True, "threshold": 90},
+        "high_score_count": {"enabled": False, "threshold": 3},
+        "full_score_count": {"enabled": False, "threshold": 2},
+        "completion_rate_above": {"enabled": False, "threshold": 90},
+        "consecutive_high_score": {"enabled": False, "threshold": 3},
+    },
+}
+
+
+def default_alert_rules() -> dict:
+    return deepcopy(DEFAULT_ALERT_RULES)
+
+
+def normalize_alert_rules(value: object) -> dict:
+    result = default_alert_rules()
+    if not isinstance(value, dict):
+        return result
+    for category in result:
+        incoming = value.get(category)
+        if not isinstance(incoming, dict):
+            continue
+        for key, default in result[category].items():
+            item = incoming.get(key)
+            if not isinstance(item, dict):
+                continue
+            result[category][key]["enabled"] = bool(item.get("enabled", default["enabled"]))
+            try:
+                threshold = float(item.get("threshold", default["threshold"]))
+            except (TypeError, ValueError):
+                threshold = default["threshold"]
+            result[category][key]["threshold"] = max(0, round(threshold, 2))
+    return result
 
 
 class TeacherAnalyticsBackendUnavailable(RuntimeError):
@@ -29,16 +75,7 @@ def _number(value, default: int | float = 0) -> int | float:
 def _score(submission: dict | None, grades: list[dict], total_questions: int) -> int | float | None:
     if submission is None:
         return None
-    if submission.get("score") is not None and not grades:
-        return _number(submission["score"])
-    if total_questions <= 0 or not grades:
-        return None
-    wrong = sum(
-        1
-        for grade in grades
-        if grade.get("status") == "graded" and float(grade.get("score") or 0) <= 0
-    )
-    return round(max(0.0, min(100.0, 100 - 100 / total_questions * wrong)), 2)
+    return calculate_submission_score(grades, total_questions, submission.get("score"))
 
 
 def _category(assignment_kind: str) -> str:
@@ -54,15 +91,7 @@ class TeacherAnalyticsService:
     @staticmethod
     def _assignment_visible_to_student(assignment: dict, username: str) -> bool:
         """Apply the assignment's MySQL open scope before building student alerts."""
-        state = str(assignment.get("open_state") or "yes").strip().lower()
-        if state in {"no", "closed", "inactive"}:
-            return False
-        if state in {"some", "targeted", "specific"}:
-            targets = assignment.get("target_usernames", [])
-            if not isinstance(targets, list):
-                return False
-            return str(username).strip() in {str(target).strip() for target in targets}
-        return True
+        return is_assignment_visible_to_student(assignment, username)
 
     @staticmethod
     def _student_payload(
@@ -115,6 +144,18 @@ class TeacherAnalyticsService:
         failed_assignments = list(dict.fromkeys(failed_assignments))
         fail_count = sum(value < 60 for value in evaluated)
         good_count = sum(value >= 90 for value in evaluated)
+        low_score_count = sum(value < 60 for value in evaluated)
+        full_score_count = sum(value >= 100 for value in evaluated)
+        consecutive_unsubmitted = 0
+        for item in assignment_results:
+            if item["submitted"]:
+                break
+            consecutive_unsubmitted += 1
+        consecutive_high_score = 0
+        for item in assignment_results:
+            if item["score"] is None or float(item["score"]) < 90:
+                break
+            consecutive_high_score += 1
         return {
             "id": student.student_id,
             "username": student.username,
@@ -138,6 +179,11 @@ class TeacherAnalyticsService:
             "_average_score": round(sum(evaluated) / len(evaluated), 1) if evaluated else None,
             "_fail_count": fail_count,
             "_good_count": good_count,
+            "_low_score_count": low_score_count,
+            "_full_score_count": full_score_count,
+            "_completion_rate": round(submitted / len(visible_assignments) * 100, 1) if visible_assignments else None,
+            "_consecutive_unsubmitted": consecutive_unsubmitted,
+            "_consecutive_high_score": consecutive_high_score,
         }
 
     @staticmethod
@@ -157,19 +203,72 @@ class TeacherAnalyticsService:
     @staticmethod
     def _remove_private_fields(rows: list[dict]) -> None:
         for row in rows:
-            for key in ("_submitted", "_assignment_count", "_evaluated", "_average_score", "_fail_count", "_good_count"):
+            for key in ("_submitted", "_assignment_count", "_evaluated", "_average_score", "_fail_count", "_good_count", "_low_score_count", "_full_score_count", "_completion_rate", "_consecutive_unsubmitted", "_consecutive_high_score"):
                 row.pop(key, None)
 
-    def get_class_analytics(self, class_id: str, owner_username: str = "") -> dict:
+    @staticmethod
+    def _matches_rule(row: dict, key: str, threshold: float, category: str) -> bool:
+        average = row.get("_average_score")
+        if category == "need_care":
+            values = {
+                "unsubmitted_count": row["_assignment_count"] - row["_submitted"] >= threshold,
+                "average_score_below": average is not None and float(average) <= threshold,
+                "fail_rate_above": row["_evaluated"] > 0 and row["_fail_count"] / row["_evaluated"] * 100 >= threshold,
+                "low_score_count": row["_low_score_count"] >= threshold,
+                "consecutive_unsubmitted": row["_consecutive_unsubmitted"] >= threshold,
+            }
+        else:
+            values = {
+                "average_score_above": average is not None and float(average) >= threshold,
+                "high_score_count": row["_good_count"] >= threshold,
+                "full_score_count": row["_full_score_count"] >= threshold,
+                "completion_rate_above": row["_completion_rate"] is not None and float(row["_completion_rate"]) >= threshold,
+                "consecutive_high_score": row["_consecutive_high_score"] >= threshold,
+            }
+        return bool(values.get(key, False))
+
+    @classmethod
+    def _matches_category(cls, row: dict, rules: dict, category: str) -> bool:
+        return any(
+            item.get("enabled") and cls._matches_rule(row, key, float(item.get("threshold", 0)), category)
+            for key, item in rules.get(category, {}).items()
+            if isinstance(item, dict)
+        )
+
+    @staticmethod
+    def get_alert_preferences(class_id: str, teacher_username: str) -> dict:
+        try:
+            with MySQLClassAnalyticsRepository() as repository:
+                configured = repository.get_alert_preferences(teacher_username, class_id)
+        except Exception as exc:
+            logger.exception("teacher_alert_preferences_read_failed", extra={"error_type": type(exc).__name__})
+            raise TeacherAnalyticsBackendUnavailable from exc
+        return normalize_alert_rules(configured)
+
+    @staticmethod
+    def save_alert_preferences(class_id: str, teacher_username: str, value: object) -> dict:
+        config = normalize_alert_rules(value)
+        try:
+            with MySQLClassAnalyticsRepository() as repository:
+                repository.save_alert_preferences(teacher_username, class_id, config)
+        except Exception as exc:
+            logger.exception("teacher_alert_preferences_save_failed", extra={"error_type": type(exc).__name__})
+            raise TeacherAnalyticsBackendUnavailable from exc
+        return config
+
+    def get_class_analytics(self, class_id: str, owner_username: str = "", page: int = 1, page_size: int = 20) -> dict:
         class_id = class_id.strip()
         if not class_id:
             raise TeacherAnalyticsNotFound
+        page = max(1, int(page))
+        page_size = min(max(1, int(page_size)), 100)
         try:
             with MySQLClassAnalyticsRepository() as repository:
                 students = repository.find_students(class_id)
                 if not students:
                     raise TeacherAnalyticsNotFound
                 assignments, latest, grades, question_counts = self._load_records(repository, students, owner_username, class_id)
+                alert_rules = normalize_alert_rules(repository.get_alert_preferences(owner_username, class_id))
         except TeacherAnalyticsNotFound:
             raise
         except Exception as exc:
@@ -200,7 +299,7 @@ class TeacherAnalyticsService:
                 "fail_rate": round(row["_fail_count"] / row["_evaluated"] * 100, 1) if row["_evaluated"] else 0,
             }
             for row in student_payloads
-            if row["needs_attention"]
+            if self._matches_category(row, alert_rules, "need_care")
         ]
         excellent = [
             {
@@ -209,9 +308,14 @@ class TeacherAnalyticsService:
                 "average_score": row["_average_score"],
             }
             for row in student_payloads
-            if row["excellent"]
+            if self._matches_category(row, alert_rules, "excellent")
         ]
-        self._remove_private_fields(student_payloads)
+        total_students = len(student_payloads)
+        total_pages = max(1, (total_students + page_size - 1) // page_size)
+        page = min(page, total_pages)
+        page_start = (page - 1) * page_size
+        page_students = student_payloads[page_start:page_start + page_size]
+        self._remove_private_fields(page_students)
         return {
             "class": {
                 "id": class_id,
@@ -226,8 +330,18 @@ class TeacherAnalyticsService:
             },
             "tests": tests,
             "alerts": {"need_care": need_care, "excellent": excellent},
-            "students": student_payloads,
-            "meta": {"read_only": True, "source": "MySQL students / assignments / submissions / grades"},
+            "alert_rules": alert_rules,
+            "students": page_students,
+            "meta": {
+                "read_only": True,
+                "source": "MySQL students / assignments / submissions / grades",
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total_students,
+                    "total_pages": total_pages,
+                },
+            },
         }
 
     def get_student_profile(self, student_id: str, owner_username: str = "", class_id: str = "all") -> dict:

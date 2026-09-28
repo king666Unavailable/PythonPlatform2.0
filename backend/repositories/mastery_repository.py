@@ -9,7 +9,6 @@ from pathlib import Path
 
 from django.conf import settings
 
-from .neo4j_repository import Neo4jRepository
 
 
 @dataclass(frozen=True)
@@ -113,64 +112,3 @@ class LegacyMasteryRepository:
             raise LegacyMasteryDataError(f"mastery score for {title} is not numeric") from exc
 
 
-@dataclass(frozen=True)
-class MasteryThemeStructure:
-    id: str
-    title: str
-    knowledge: tuple[tuple[str, str], ...]
-
-
-class Neo4jMasteryRepository:
-    """Load the current Theme -> Knowledge structure used to label mastery values."""
-
-    def __init__(self) -> None:
-        self.repository = Neo4jRepository()
-
-    def close(self) -> None:
-        self.repository.close()
-
-    def __enter__(self) -> "Neo4jMasteryRepository":
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        self.close()
-
-    def fetch_structure(self) -> tuple[MasteryThemeStructure, ...]:
-        session_options = {}
-        if settings.NEO4J_DATABASE:
-            session_options["database"] = settings.NEO4J_DATABASE
-
-        with self.repository.driver.session(**session_options) as session:
-            theme_records = session.run(
-                """
-                MATCH (theme:Theme)
-                RETURN elementId(theme) AS theme_id,
-                       coalesce(theme.title, '') AS theme_title
-                ORDER BY theme_title, theme_id
-                """
-            ).data()
-            knowledge_records = session.run(
-                """
-                MATCH (theme:Theme)-[:include]->(knowledge:Knowledge)
-                RETURN elementId(theme) AS theme_id,
-                       elementId(knowledge) AS knowledge_id,
-                       coalesce(knowledge.title, '') AS knowledge_title
-                ORDER BY theme_id, knowledge_title, knowledge_id
-                """
-            ).data()
-
-        knowledge_by_theme: dict[str, list[tuple[str, str]]] = {}
-        for record in knowledge_records:
-            theme_id = str(record["theme_id"])
-            knowledge_by_theme.setdefault(theme_id, []).append(
-                (str(record["knowledge_id"]), str(record["knowledge_title"] or "未命名知识"))
-            )
-
-        return tuple(
-            MasteryThemeStructure(
-                id=str(record["theme_id"]),
-                title=str(record["theme_title"] or "未命名主题"),
-                knowledge=tuple(knowledge_by_theme.get(str(record["theme_id"]), [])),
-            )
-            for record in theme_records
-        )

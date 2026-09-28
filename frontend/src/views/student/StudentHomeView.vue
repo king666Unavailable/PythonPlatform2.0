@@ -20,6 +20,8 @@ const error = ref('')
 
 const pending = computed(() => assignments.value.filter((item) => ['待完成', '进行中'].includes(String(item.status))))
 const completed = computed(() => assignments.value.filter((item) => String(item.status) === '已完成').length)
+const completionRate = computed(() => assignments.value.length ? Math.round(completed.value / assignments.value.length * 100) : null)
+const completionHint = computed(() => assignments.value.length ? `已完成 ${completed.value} / ${assignments.value.length} 份作业` : '当前教学班暂无可用作业')
 const recentGrades = computed(() => grades.value.filter((item) => {
   const status = String(item.status ?? '').trim().toLowerCase()
   return !['draft', 'in_progress', '进行中', '待完成'].includes(status)
@@ -53,7 +55,7 @@ onMounted(() => void load())
         <MetricCard label="待完成作业" :value="pending.length" hint="包括正在进行的作业" tone="blue" />
         <MetricCard label="已完成作业" :value="completed" hint="累计完成记录" tone="green" />
         <MetricCard label="平均成绩" :value="averageScore === null ? '—' : `${averageScore} 分`" hint="来自已批改提交" tone="purple" />
-        <MetricCard label="完成率" value="—" hint="学情分析功能待实现" tone="orange" />
+        <MetricCard label="完成率" :value="completionRate === null ? '暂无数据' : `${completionRate}%`" :hint="completionHint" tone="orange" />
       </section>
       <div class="dashboard-grid">
         <section class="content-card prominent-card">

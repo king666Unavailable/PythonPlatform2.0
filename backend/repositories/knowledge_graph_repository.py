@@ -72,7 +72,15 @@ class Neo4jKnowledgeGraphRepository:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
 
-    def fetch_graph(self) -> KnowledgeGraph:
+    def fetch_graph(self, graph_class_uid: str | None = None) -> KnowledgeGraph:
+        """Load only the selected Class node and its descendants.
+
+        A missing graph identity deliberately returns an empty graph instead of
+        falling back to the whole Neo4j database. That prevents one teaching
+        class from seeing another class's curriculum.
+        """
+        if not graph_class_uid:
+            return KnowledgeGraph(nodes=(), edges=())
         session_options = {}
         if settings.NEO4J_DATABASE:
             session_options["database"] = settings.NEO4J_DATABASE
@@ -80,8 +88,9 @@ class Neo4jKnowledgeGraphRepository:
         with self.repository.driver.session(**session_options) as session:
             node_records = session.run(
                 """
-                MATCH (node)
-                WHERE node:Class OR node:Theme OR node:Knowledge OR node:Point
+                MATCH (course:Class)
+                WHERE toString(course.uid)=$graph_class_uid
+                MATCH (course)-[:include*0..3]->(node)
                 RETURN toString(node.uid) AS node_id,
                        coalesce(node.title, '') AS label,
                        CASE
@@ -98,19 +107,24 @@ class Neo4jKnowledgeGraphRepository:
                        END AS level
                 ORDER BY level, label, node_id
                 """,
+                 graph_class_uid=str(graph_class_uid),
                 timeout=settings.NEO4J_QUERY_TIMEOUT,
             ).data()
             edge_records = session.run(
                 """
+                MATCH (course:Class)
+                WHERE toString(course.uid)=$graph_class_uid
+                MATCH (course)-[:include*0..3]->(scoped)
+                WITH collect(DISTINCT scoped) AS scoped_nodes
+                UNWIND scoped_nodes AS parent
                 MATCH (parent)-[relation:include]->(child)
-                WHERE (parent:Class AND child:Theme)
-                   OR (parent:Theme AND child:Knowledge)
-                   OR (parent:Knowledge AND child:Point)
+                WHERE child IN scoped_nodes
                 RETURN toString(parent.uid) AS source,
                        toString(child.uid) AS target,
                        type(relation) AS relation
                 ORDER BY source, target
                 """,
+                 graph_class_uid=str(graph_class_uid),
                 timeout=settings.NEO4J_QUERY_TIMEOUT,
             ).data()
 

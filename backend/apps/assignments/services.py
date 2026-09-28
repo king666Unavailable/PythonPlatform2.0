@@ -9,6 +9,7 @@ from typing import Any
 
 from django.utils import timezone
 
+from domain.assignment_rules import is_assignment_visible_to_student
 from repositories.learning_repository import LearningRepository
 from repositories.question_repository import QuestionQuery
 from repositories.mysql_question_repository import MySQLQuestionRepository
@@ -25,9 +26,6 @@ class AssignmentNotFound(LookupError):
 
 class AssignmentUnavailable(RuntimeError):
     """Raised when the formal MySQL assignment store is unavailable."""
-
-
-OBJECTIVE_ANSWER_TYPES = {"1", "2"}
 
 
 def parse_deadline(value: str) -> datetime | None:
@@ -178,8 +176,6 @@ class AssignmentService:
         if submission_status in {"grading", "grading_unavailable", "graded"}:
             if not assignment.get("allow_answer_view"):
                 answer_view_message = "教师尚未开放标准答案。"
-            elif not questions or any(str(question.get("type_code", "")) not in OBJECTIVE_ANSWER_TYPES for question in questions):
-                answer_view_message = "该作业包含编程题，标准答案暂不开放。"
             else:
                 can_view_answers = True
                 questions = self._resolve_assignment_questions(assignment["id"], include_solution=True)
@@ -437,16 +433,9 @@ class AssignmentService:
 
     @staticmethod
     def _is_available(assignment: dict[str, Any], username: str) -> bool:
-        if assignment.get("status") not in ("published", "active", ""):
-            return False
-        state = str(assignment.get("open_state", "yes")).lower()
-        if state == "no":
-            return False
-        if state in ("some", "targeted", "specific"):
-            targets = assignment.get("target_usernames", [])
-            if isinstance(targets, str):
-                targets = [part.strip() for part in targets.replace("，", ",").replace("\n", ",").split(",") if part.strip()]
-            return username in {str(target).strip() for target in targets if str(target).strip()}
-        if not assignment.get("is_makeup"):
-            return state == "yes"
-        return state == "yes"
+        return is_assignment_visible_to_student(
+            assignment,
+            username,
+            require_active_status=True,
+            require_explicit_yes_state=True,
+        )

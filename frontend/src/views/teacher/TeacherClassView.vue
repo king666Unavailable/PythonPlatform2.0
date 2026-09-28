@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchClassAnalytics, fetchTeacherClassMastery, fetchTeacherStudentProfile } from '@/api/client'
+import { fetchClassAnalytics, fetchClassAlertPreferences, fetchTeacherClassMastery, fetchTeacherStudentProfile, refreshTeacherClassMastery, saveClassAlertPreferences } from '@/api/client'
+import type { ClassAlertRules } from '@/api/client'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import ScoreLineChart from '@/components/data-display/ScoreLineChart.vue'
@@ -20,7 +21,52 @@ const activeTab = ref<'analysis' | 'details' | 'mastery'>('analysis')
 const masteryData = ref<ClassKnowledgeMasteryResponse | null>(null)
 const masteryLoading = ref(false)
 const masteryError = ref('')
+const masteryNotice = ref('')
 const selectedMasteryKey = ref('')
+const detailsPage = ref(1)
+const detailsPageSize = 20
+const detailsLoading = ref(false)
+type AlertCategory = 'need_care' | 'excellent'
+type AlertRuleKey = string
+
+const alertRules = ref<ClassAlertRules>({
+  need_care: {
+    unsubmitted_count: { enabled: true, threshold: 0 },
+    average_score_below: { enabled: false, threshold: 60 },
+    fail_rate_above: { enabled: true, threshold: 50 },
+    low_score_count: { enabled: false, threshold: 2 },
+    consecutive_unsubmitted: { enabled: false, threshold: 2 },
+  },
+  excellent: {
+    average_score_above: { enabled: true, threshold: 90 },
+    high_score_count: { enabled: false, threshold: 3 },
+    full_score_count: { enabled: false, threshold: 2 },
+    completion_rate_above: { enabled: false, threshold: 90 },
+    consecutive_high_score: { enabled: false, threshold: 3 },
+  },
+})
+const alertSettingsOpen = ref<AlertCategory | null>(null)
+const alertSettingsLoading = ref(false)
+const alertSettingsSaving = ref(false)
+const alertSettingsError = ref('')
+const alertSettingsSuccess = ref('')
+
+const needCareRuleDefinitions: Array<{ key: AlertRuleKey; label: string; operator: string; unit: string; description: string }> = [
+  { key: 'unsubmitted_count', label: '未提交次数', operator: '≥', unit: '次', description: '适合发现长期未完成作业的学生' },
+  { key: 'average_score_below', label: '平均分', operator: '≤', unit: '分', description: '按当前班级作业平均分判断' },
+  { key: 'fail_rate_above', label: '不及格率', operator: '≥', unit: '%', description: '按已判卷作业中低于 60 分的比例判断' },
+  { key: 'low_score_count', label: '低于 60 分的次数', operator: '≥', unit: '次', description: '按已判卷作业成绩统计' },
+  { key: 'consecutive_unsubmitted', label: '连续未提交次数', operator: '≥', unit: '次', description: '从最近发布的作业开始连续统计' },
+]
+const excellentRuleDefinitions: Array<{ key: AlertRuleKey; label: string; operator: string; unit: string; description: string }> = [
+  { key: 'average_score_above', label: '平均分', operator: '≥', unit: '分', description: '按当前班级作业平均分判断' },
+  { key: 'high_score_count', label: '成绩 ≥ 90 分的次数', operator: '≥', unit: '次', description: '按已判卷作业成绩统计' },
+  { key: 'full_score_count', label: '成绩 = 100 分的次数', operator: '≥', unit: '次', description: '按成绩达到 100 分的作业统计' },
+  { key: 'completion_rate_above', label: '作业完成率', operator: '≥', unit: '%', description: '按已提交作业数占可见作业数计算' },
+  { key: 'consecutive_high_score', label: '连续成绩 ≥ 90 分的次数', operator: '≥', unit: '次', description: '从最近发布的作业开始连续统计' },
+]
+const activeAlertRuleDefinitions = computed(() => alertSettingsOpen.value === 'need_care' ? needCareRuleDefinitions : excellentRuleDefinitions)
+const activeAlertRuleValues = computed(() => alertSettingsOpen.value ? alertRules.value[alertSettingsOpen.value] : {})
 
 type AveragePoint = { name: string; score: number }
 
@@ -41,12 +87,62 @@ async function load() {
   loading.value = true
   error.value = ''
   student.value = null
+  detailsPage.value = 1
   try {
-    data.value = await fetchClassAnalytics(classId.value.trim() || 'all')
+    data.value = await fetchClassAnalytics(classId.value.trim() || 'all', 1, detailsPageSize)
+    if (data.value?.alert_rules) alertRules.value = data.value.alert_rules
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '班级学情加载失败。'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDetailsPage(page: number) {
+  const pagination = data.value?.meta?.pagination
+  const totalPages = Number(pagination?.total_pages ?? 1)
+  const targetPage = Math.min(Math.max(1, page), totalPages)
+  if (detailsLoading.value || targetPage === detailsPage.value) return
+  detailsLoading.value = true
+  error.value = ''
+  try {
+    data.value = await fetchClassAnalytics(classId.value.trim() || 'all', targetPage, detailsPageSize)
+    detailsPage.value = targetPage
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '作业详情加载失败。'
+  } finally {
+    detailsLoading.value = false
+  }
+}
+
+async function openAlertSettings(category: AlertCategory) {
+  alertSettingsError.value = ''
+  alertSettingsSuccess.value = ''
+  alertSettingsOpen.value = category
+  if (data.value?.alert_rules) return
+  alertSettingsLoading.value = true
+  try {
+    alertRules.value = (await fetchClassAlertPreferences()).config
+  } catch (cause) {
+    alertSettingsError.value = cause instanceof Error ? cause.message : '学情提醒条件加载失败。'
+  } finally {
+    alertSettingsLoading.value = false
+  }
+}
+
+async function saveAlertSettings() {
+  alertSettingsSaving.value = true
+  alertSettingsError.value = ''
+  alertSettingsSuccess.value = ''
+  try {
+    alertRules.value = (await saveClassAlertPreferences(alertRules.value)).config
+    await load()
+    alertSettingsOpen.value = null
+    success.value = '学情提醒条件已保存。'
+  } catch (cause) {
+    alertSettingsError.value = cause instanceof Error ? cause.message : '学情提醒条件保存失败。'
+  } finally {
+    alertSettingsSaving.value = false
   }
 }
 
@@ -122,12 +218,29 @@ function scoreTone(score: number | null) {
 async function loadMastery(nodeType = '', nodeId = '') {
   masteryLoading.value = true
   masteryError.value = ''
+  masteryNotice.value = ''
   if (!nodeType) selectedMasteryKey.value = ''
   try {
     masteryData.value = await fetchTeacherClassMastery(nodeType, nodeId)
     if (nodeType && nodeId) selectedMasteryKey.value = `${nodeType}:${nodeId}`
   } catch (cause) {
     masteryError.value = cause instanceof Error ? cause.message : '知识掌握度加载失败。'
+  } finally {
+    masteryLoading.value = false
+  }
+}
+
+async function refreshMastery() {
+  masteryLoading.value = true
+  masteryError.value = ''
+  masteryNotice.value = ''
+  try {
+    const result = await refreshTeacherClassMastery()
+    masteryData.value = result.report
+    selectedMasteryKey.value = ''
+    masteryNotice.value = `计算完成：已刷新 ${result.refresh.student_class_count} 名学生的掌握度。`
+  } catch (cause) {
+    masteryError.value = cause instanceof Error ? cause.message : '知识掌握度计算失败。'
   } finally {
     masteryLoading.value = false
   }
@@ -180,19 +293,27 @@ if (route.query.tab === 'mastery') {
           <MetricCard label="平均成绩" :value="classAverage ? classAverage + ' 分' : '—'" tone="purple" />
         </div>
 
+        <div v-if="alertSettingsOpen" class="modal-backdrop class-alert-settings-backdrop" @click.self="alertSettingsOpen = null">
+          <section class="modal-card class-alert-settings-card">
+            <div class="section-heading"><div><h3>{{ alertSettingsOpen === 'need_care' ? '设置需要关注条件' : '设置表现优秀条件' }}</h3><p>勾选任意条件，满足其中一项即可进入提醒名单。</p></div><button class="icon-button" type="button" aria-label="关闭设置" @click="alertSettingsOpen = null">×</button></div>
+            <div v-if="alertSettingsLoading" class="loading-state">正在加载条件…</div>
+            <div v-else class="alert-rule-list"><label v-for="rule in activeAlertRuleDefinitions" :key="rule.key" class="alert-rule-option"><input v-model="activeAlertRuleValues[rule.key].enabled" type="checkbox" /><span class="alert-rule-label"><strong>{{ rule.label }}</strong><small>{{ rule.description }}</small></span><span class="alert-rule-operator">{{ rule.operator }}</span><input v-model.number="activeAlertRuleValues[rule.key].threshold" class="alert-rule-number" type="number" min="0" step="1" /><em>{{ rule.unit }}</em></label></div>
+            <p v-if="alertSettingsError" class="alert-settings-error">{{ alertSettingsError }}</p><p v-if="alertSettingsSuccess" class="alert-settings-success">{{ alertSettingsSuccess }}</p>
+            <div class="modal-actions"><button class="secondary-button" type="button" @click="alertSettingsOpen = null">取消</button><button type="button" :disabled="alertSettingsSaving || alertSettingsLoading" @click="saveAlertSettings">{{ alertSettingsSaving ? '保存中…' : '保存条件' }}</button></div>
+          </section>
+        </div>
+
         <div class="dashboard-grid">
           <section class="content-card class-alert-card">
             <div class="section-heading"><div><h3>学情提醒</h3><p>点击学生查看个人学习情况。</p></div></div>
             <div class="alert-columns">
               <div class="alert-box warning">
-                <strong>需要关注（{{ data.alerts.need_care.length }}）</strong>
-                <small class="alert-rule-hint">有未交作业，或不及格率达到 50%</small>
+                <div class="alert-box-header"><strong>需要关注（{{ data.alerts.need_care.length }}）</strong><button class="alert-settings-button" type="button" aria-label="设置需要关注条件" title="设置需要关注条件" @click="openAlertSettings('need_care')">⚙</button></div>
                 <button v-for="item in data.alerts.need_care" :key="item.id" type="button" @click="openStudent(item.id)">{{ item.name }}<span>未交 {{ item.unsubmit_count }} 次 · 不及格率 {{ item.fail_rate }}%</span></button>
                 <span v-if="!data.alerts.need_care.length" class="muted">暂无</span>
               </div>
               <div class="alert-box success">
-                <strong>表现优秀（{{ data.alerts.excellent.length }}）</strong>
-                <small class="alert-rule-hint">已判卷作业平均分达到 90 分</small>
+                <div class="alert-box-header"><strong>表现优秀（{{ data.alerts.excellent.length }}）</strong><button class="alert-settings-button" type="button" aria-label="设置表现优秀条件" title="设置表现优秀条件" @click="openAlertSettings('excellent')">⚙</button></div>
                 <button v-for="item in data.alerts.excellent" :key="item.id" type="button" @click="openStudent(item.id)">{{ item.name }}<span>平均分 {{ item.average_score ?? '—' }} 分</span></button>
                 <span v-if="!data.alerts.excellent.length" class="muted">暂无</span>
               </div>
@@ -231,7 +352,11 @@ if (route.query.tab === 'mastery') {
 
       <template v-else-if="activeTab === 'mastery'">
         <InlineMessage :message="masteryError" tone="error" />
+        <InlineMessage :message="masteryNotice" tone="success" />
         <div v-if="masteryLoading && !masteryData" class="loading-state">正在加载知识掌握度…</div>
+        <section v-else-if="masteryData && masteryData.meta.graph_configured === false" class="content-card graph-unconfigured-card">
+          <EmptyState title="当前教学班未配置知识图谱" description="暂时无法查看班级知识掌握度，请联系管理员在教学班管理中为当前教学班选择知识图谱。" />
+        </section>
         <template v-else-if="masteryData">
           <div class="metric-grid class-mastery-metrics">
             <MetricCard label="课程总体掌握度" :value="masteryData.summary.course_mastery == null ? '—' : masteryData.summary.course_mastery + ' 分'" tone="blue" />
@@ -240,7 +365,7 @@ if (route.query.tab === 'mastery') {
           </div>
 
           <section class="content-card class-mastery-browser">
-            <div class="section-heading"><div><h3>知识掌握度</h3><p>按课程结构查看当前教学班的掌握情况。</p></div><button class="secondary-button" type="button" :disabled="masteryLoading" @click="loadMastery()">刷新数据</button></div>
+            <div class="section-heading"><div><h3>知识掌握度</h3><p>按课程结构查看当前教学班的掌握情况。</p></div><div class="mastery-actions"><button class="secondary-button" type="button" :disabled="masteryLoading" @click="loadMastery()">刷新数据</button><button class="primary-button" type="button" :disabled="masteryLoading" @click="refreshMastery">{{ masteryLoading ? '计算中…' : '重新计算' }}</button></div></div>
             <div class="class-mastery-browser-grid">
               <div class="class-mastery-tree" role="tree" aria-label="知识掌握度层级">
                 <button v-for="node in masteryTreeRows" :key="masteryKey(node)" type="button" class="class-mastery-tree-row" :class="[{ selected: selectedMasteryKey === masteryKey(node) }, scoreTone(node.mastery_score)]" :style="{ paddingLeft: `${16 + node.depth * 22}px` }" @click="selectMasteryNode(node)">
@@ -273,10 +398,12 @@ if (route.query.tab === 'mastery') {
       <template v-else>
         <section class="content-card flush-card">
           <div class="section-heading padded-heading"><div><h3>作业详情</h3><p>查看各学生在所有作业和测试中的具体得分。</p></div></div>
+          <div v-if="detailsLoading" class="loading-state table-inline-loading">正在加载第 {{ detailsPage }} 页…</div>
           <div class="data-table class-detail-table">
             <div class="data-table-head"><span>序号</span><span>学号</span><span>姓名</span><span>班级</span><span v-for="test in data.tests" :key="test.name">{{ test.name }}<small> 得分</small></span></div>
-            <button v-for="(item, index) in data.students" :key="item.id" class="data-table-row" type="button" @click="openStudentFromDetails(item.id)"><span>{{ index + 1 }}</span><span>{{ item.username }}</span><strong class="teacher-student-name">{{ item.name }}<small v-if="item.is_active === false">已停用</small></strong><span>{{ item.study_class || '未填写' }}</span><span v-for="test in data.tests" :key="test.name">{{ item.scores[test.name] ?? '—' }}</span></button>
+            <button v-for="(item, index) in data.students" :key="item.id" class="data-table-row" type="button" @click="openStudentFromDetails(item.id)"><span>{{ (detailsPage - 1) * detailsPageSize + index + 1 }}</span><span>{{ item.username }}</span><strong class="teacher-student-name">{{ item.name }}<small v-if="item.is_active === false">已停用</small></strong><span>{{ item.study_class || '未填写' }}</span><span v-for="test in data.tests" :key="test.name">{{ item.scores[test.name] ?? '—' }}</span></button>
           </div>
+          <div v-if="data.meta.pagination?.total_pages > 1" class="pagination class-detail-pagination"><span>共 {{ data.meta.pagination.total }} 名学生，第 {{ detailsPage }} / {{ data.meta.pagination.total_pages }} 页</span><button class="secondary-button" :disabled="detailsLoading || detailsPage <= 1" type="button" @click="loadDetailsPage(1)">首页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage <= 1" type="button" @click="loadDetailsPage(detailsPage - 1)">上一页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage >= data.meta.pagination.total_pages" type="button" @click="loadDetailsPage(detailsPage + 1)">下一页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage >= data.meta.pagination.total_pages" type="button" @click="loadDetailsPage(data.meta.pagination.total_pages)">末页</button></div>
         </section>
       </template>
     </template>

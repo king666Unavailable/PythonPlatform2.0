@@ -54,6 +54,12 @@ export interface ClassAnalyticsResponse {
   meta: {
     read_only: boolean
     source: string
+    pagination: {
+      page: number
+      page_size: number
+      total: number
+      total_pages: number
+    }
   }
 }
 
@@ -113,5 +119,6 @@ export interface ClassKnowledgeMasteryResponse {
     read_only: boolean
     source: string
     unmastered_threshold: number
+    graph_configured?: boolean
   }
 }

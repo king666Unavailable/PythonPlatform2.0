@@ -44,7 +44,7 @@ class ClassMasteryBackendUnavailable(RuntimeError):
 
 
 class ClassMasteryService:
-    """Read-only class mastery aggregation scoped to one teaching class."""
+    """Class mastery aggregation and recalculation scoped to one teaching class."""
 
     def get_for_class(self, class_id: str, node_type: str = "", node_id: str = "") -> dict:
         try:
@@ -52,6 +52,14 @@ class ClassMasteryService:
                 return repository.get_report(class_id, node_type, node_id)
         except Exception as exc:
             logger.exception("class_mastery_backend_unavailable", extra={"error_type": type(exc).__name__})
+            raise ClassMasteryBackendUnavailable from exc
+
+    def refresh_for_class(self, class_id: str) -> dict[str, int | str]:
+        try:
+            with MySQLStudentMasteryRepository() as repository:
+                return repository.refresh_for_class(class_id)
+        except Exception as exc:
+            logger.exception("class_mastery_refresh_failed", extra={"error_type": type(exc).__name__})
             raise ClassMasteryBackendUnavailable from exc
 
 

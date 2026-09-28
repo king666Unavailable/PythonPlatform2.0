@@ -91,7 +91,11 @@ def approve_generation(request, task_id: str):
         with MySQLQuestionRepository() as repository:
             for question in task["result"]:
                 if str(question.get("title", "")).strip():
-                    created.append(repository.create_question(question))
+                    # Knowledge-point links must use stable UIDs. Legacy AI
+                    # output may contain display titles, which are not used
+                    # as persistence keys.
+                    payload = {key: value for key, value in question.items() if key != "point_titles"}
+                    created.append(repository.create_question(payload))
     except Exception:
         return Response({"message": "候选题写入题库失败。", "code": "AI_APPROVE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as repository:

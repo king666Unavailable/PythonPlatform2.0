@@ -46,7 +46,7 @@ class AIService:
 
     def generate_questions(self, prompt: str) -> Any:
         content = AIClient().complete([
-            {"role": "system", "content": "你是教学题目生成器。只返回 JSON 数组，每项包含 title,type_code,content,answer,analysis,difficulty,importance,point_titles。"},
+            {"role": "system", "content": "你是教学题目生成器。只返回 JSON 数组，每项包含 title,type_code,content,answer,analysis,difficulty,importance；知识点关联由教师在题库中通过稳定 UID 选择。"},
             {"role": "user", "content": prompt},
         ])
         content = content.strip()

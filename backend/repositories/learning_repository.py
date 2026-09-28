@@ -8,6 +8,8 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any, Iterable
 
+from domain.submission_scoring import calculate_submission_score
+
 from .mysql_connection import create_mysql_connection
 
 
@@ -461,28 +463,15 @@ class LearningRepository:
             total_questions = int((cursor.fetchone() or {}).get("total_questions") or 0)
             cursor.execute(
                 """
-                SELECT COUNT(DISTINCT question_position) AS graded_questions,
-                       SUM(CASE WHEN status NOT IN ('graded','code_structure_error','function_not_found') OR score IS NULL THEN 1 ELSE 0 END) AS pending_questions,
-                       AVG(CASE WHEN status IN ('graded','code_structure_error','function_not_found') THEN score ELSE NULL END) AS average_score
+                SELECT question_position, score, status
                 FROM submission_grades
                 WHERE submission_id=%s
+                ORDER BY question_position
                 """,
                 (submission_id,),
             )
-            grade_summary = cursor.fetchone() or {}
-            graded_questions = int(grade_summary.get("graded_questions") or 0)
-            pending_questions = int(grade_summary.get("pending_questions") or 0)
-            average_score = grade_summary.get("average_score")
-        # A result is available only after every assignment question has a
-        # persisted terminal row.  Programming questions may contribute a
-        # weighted partial score; objective questions remain 100/0.
-        # code_structure_error / function_not_found are terminal zero-score
-        # outcomes, so they count toward the average instead of blocking it.
-        if pending_questions or graded_questions < total_questions or average_score is None:
-            return None
-        if total_questions <= 0:
-            return None
-        return round(max(0.0, min(100.0, float(average_score))), 2)
+            grades = cursor.fetchall()
+        return calculate_submission_score(grades, total_questions)
 
     def list_grades(self, submission_id: str) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:

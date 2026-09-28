@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from api.permissions import IsTeacher, IsTeacherOrStudent, session_user
+from apps.context.services import CurrentClassService
 from repositories.learning_repository import LearningRepository
 from repositories.mysql_question_repository import MySQLQuestionRepository
 from repositories.question_repository import QuestionQuery
@@ -20,12 +21,17 @@ def question_list(request):
     if not serializer.is_valid():
         return Response({"message": "题目查询参数无效。", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     data = serializer.validated_data
+    graph_class_id = CurrentClassService().require(request).get("graph_class_id")
+    point_titles = tuple(item.strip() for item in data.get("points", "").split(",") if item.strip())
     query = QuestionQuery(
         keyword=data.get("q", ""),
         type_code=data.get("type", ""),
         point_title=data.get("point", ""),
         page=data["page"],
         page_size=data["page_size"],
+        point_status=data.get("point_status", ""),
+        point_titles=point_titles,
+        graph_class_id=str(graph_class_id) if graph_class_id else None,
     )
     try:
         return Response(QuestionService().list(query).public_dict())
@@ -40,7 +46,9 @@ def question_list(request):
 @permission_classes([IsTeacherOrStudent])
 def question_detail(request, question_id: str):
     try:
-        question = QuestionService().get(question_id)
+        _, current = CurrentClassService().load(request)
+        graph_class_id = current.get("graph_class_id") if current else None
+        question = QuestionService().get(question_id, str(graph_class_id) if graph_class_id else None)
     except QuestionNotFound:
         return Response(
             {"message": "题目不存在。", "code": "QUESTION_NOT_FOUND"},
@@ -62,8 +70,9 @@ def question_create(request):
     if not str(request.data.get("title", "")).strip():
         return Response({"message": "题目标题不能为空。", "code": "QUESTION_TITLE_REQUIRED"}, status=status.HTTP_400_BAD_REQUEST)
     try:
+        payload = {**request.data, "graph_class_id": CurrentClassService().require(request).get("graph_class_id")}
         with MySQLQuestionRepository() as repository:
-            question = repository.create_question(request.data)
+            question = repository.create_question(payload)
     except Exception:
         return Response({"message": "题目创建失败。", "code": "QUESTION_CREATE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as audit:
@@ -75,8 +84,9 @@ def question_create(request):
 @permission_classes([IsTeacher])
 def question_update(request, question_id: str):
     try:
+        payload = {**request.data, "graph_class_id": CurrentClassService().require(request).get("graph_class_id")}
         with MySQLQuestionRepository() as repository:
-            question = repository.update_question(question_id, request.data)
+            question = repository.update_question(question_id, payload)
     except Exception:
         return Response({"message": "题目修改失败。", "code": "QUESTION_UPDATE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
     if not question:

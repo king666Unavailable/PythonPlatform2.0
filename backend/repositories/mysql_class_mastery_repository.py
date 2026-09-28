@@ -47,7 +47,8 @@ class MySQLClassMasteryRepository:
     ) -> dict[str, Any]:
         members = self._members(class_id)
         mastery_rows = self._mastery_rows(class_id)
-        nodes, node_rows = self._build_nodes(class_id, members, mastery_rows)
+        graph_class_id = self._graph_class_id(class_id)
+        nodes, node_rows = self._build_nodes(class_id, graph_class_id, members, mastery_rows)
         selected = None
         if selected_type or selected_id:
             if selected_type not in NODE_TYPES or not selected_id:
@@ -61,7 +62,16 @@ class MySQLClassMasteryRepository:
                     members,
                 )
 
-        course_node = next((item for item in nodes if item["node_type"] == "class" and item["node_id"] == str(class_id)), None)
+        course_node = next(
+            (
+                item
+                for item in nodes
+                if item["node_type"] == "class"
+                and graph_class_id
+                and item["node_id"] == str(graph_class_id)
+            ),
+            None,
+        )
         if course_node and course_node["mastery_score"] is not None:
             course_mastery = course_node["mastery_score"]
         else:
@@ -105,6 +115,13 @@ class MySQLClassMasteryRepository:
         teaching_class = str(row.get("teaching_class") or "").strip()
         return " · ".join(item for item in (course, teaching_class) if item) or str(class_id)
 
+    def _graph_class_id(self, class_id: str) -> str | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT graph_class_id FROM classes WHERE id=%s LIMIT 1", (class_id,))
+            row = cursor.fetchone()
+        value = (row or {}).get("graph_class_id")
+        return str(value) if value is not None else None
+
     def _members(self, class_id: str) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:
             cursor.execute(
@@ -141,10 +158,11 @@ class MySQLClassMasteryRepository:
     def _build_nodes(
         self,
         class_id: str,
+        graph_class_id: str | None,
         members: list[dict[str, Any]],
         mastery_rows: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], list[dict[str, Any]]]]:
-        metadata, parents, question_counts = self._graph_nodes()
+        metadata, parents, question_counts = self._graph_nodes(graph_class_id)
         by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
         for row in mastery_rows:
             by_key[(str(row["node_type"]), str(row["node_id"]))].append(row)
@@ -159,19 +177,23 @@ class MySQLClassMasteryRepository:
                 current = parents[current]
             roots[key] = current
         has_current_class_scope = any(
-            key[0] != "class" and root == ("class", str(class_id))
+            key[0] != "class" and graph_class_id and root == ("class", str(graph_class_id))
             for key, root in roots.items()
         )
         if has_current_class_scope:
             all_keys = {
                 key for key in graph_keys
-                if roots.get(key) == ("class", str(class_id)) or key in by_key
+                if roots.get(key) == ("class", str(graph_class_id)) or key in by_key
             }
         else:
             # Some migrated classes do not yet have a Class->Theme edge. Keep
             # the current class as the root and expose the shared curriculum
             # rather than showing unrelated class records.
-            all_keys = {key for key in graph_keys if key[0] != "class" or key == ("class", str(class_id))}
+            all_keys = {
+                key
+                for key in graph_keys
+                if key[0] != "class" or (graph_class_id and key == ("class", str(graph_class_id)))
+            }
 
         nodes: list[dict[str, Any]] = []
         for node_type, node_id in all_keys:
@@ -206,30 +228,38 @@ class MySQLClassMasteryRepository:
 
     def _graph_nodes(
         self,
+        graph_class_id: str | None,
     ) -> tuple[dict[tuple[str, str], dict[str, Any]], dict[tuple[str, str], tuple[str, str]], dict[tuple[str, str], int]]:
         metadata: dict[tuple[str, str], dict[str, Any]] = {}
         parents: dict[tuple[str, str], tuple[str, str]] = {}
         question_counts: dict[tuple[str, str], int] = defaultdict(int)
+        if not graph_class_id:
+            return metadata, parents, dict(question_counts)
         with self.connection.cursor() as cursor:
             for node_type, table in (
-                ("class", "classes"),
+                ("class", "graph_classes"),
                 ("theme", "graph_themes"),
                 ("knowledge", "graph_knowledge"),
                 ("point", "graph_points"),
             ):
-                cursor.execute(f"SELECT id, title FROM {table}")
+                if node_type == "class":
+                    cursor.execute(f"SELECT id, title FROM {table} WHERE id=%s", (graph_class_id,))
+                else:
+                    cursor.execute(f"SELECT id, title FROM {table} WHERE graph_class_id=%s", (graph_class_id,))
                 for row in cursor.fetchall():
                     metadata[(node_type, str(row["id"]))] = {"title": row.get("title")}
 
             cursor.execute(
                 """
                 SELECT source_label, source_id, target_label, target_id
-                FROM legacy_graph_relationships
-                WHERE relation_type='include'
-                  AND ((source_label='Class' AND target_label='Theme')
-                    OR (source_label='Theme' AND target_label='Knowledge')
-                    OR (source_label='Knowledge' AND target_label='Point'))
+                FROM graph_relationships r
+                WHERE (r.relation_type='include' AND r.source_label='Class' AND r.target_label='Theme' AND r.source_id=%s)
+                   OR (r.relation_type='include' AND r.source_label='Theme' AND r.target_label='Knowledge'
+                       AND EXISTS (SELECT 1 FROM graph_themes t WHERE t.id=r.source_id AND t.graph_class_id=%s))
+                   OR (r.relation_type='include' AND r.source_label='Knowledge' AND r.target_label='Point'
+                       AND EXISTS (SELECT 1 FROM graph_knowledge k WHERE k.id=r.source_id AND k.graph_class_id=%s))
                 """
+                , (graph_class_id, graph_class_id, graph_class_id)
             )
             for row in cursor.fetchall():
                 source_type = {value: key for key, value in NODE_LABELS.items()}[row["source_label"]]
@@ -239,9 +269,11 @@ class MySQLClassMasteryRepository:
             cursor.execute(
                 """
                 SELECT source_id, target_id
-                FROM legacy_graph_relationships
-                WHERE relation_type='relate' AND source_label='Point' AND target_label='Test'
+                FROM graph_relationships r
+                WHERE r.relation_type='relate' AND r.source_label='Point' AND r.target_label='Test'
+                  AND EXISTS (SELECT 1 FROM graph_points p WHERE p.id=r.source_id AND p.graph_class_id=%s)
                 """
+                , (graph_class_id,)
             )
             for row in cursor.fetchall():
                 question_counts[("point", str(row["source_id"]))] += 1

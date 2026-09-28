@@ -11,6 +11,7 @@ export interface QuestionSummary {
   correct_question_count: number
   rate: number
   point_titles: string[]
+  point_uids: string[]
 }
 
 export interface Question extends QuestionSummary {

@@ -6,12 +6,23 @@ __pycache__/
 **/__pycache__/
 docs/
 node_modules/
-scripts/
+scripts/*
+!scripts/cleanup_legacy_graph_schema_20260928.py
+!scripts/rename_graph_compat_tables_20260928.py
+!scripts/generate_python_platform_sync_sql.py
 .gitkeep
 *.log
+# 测试专用文件：平台运行时不会加载，因此统一忽略；不要忽略普通业务代码中的 test 字样
 test_piston.py
-database/python_platform_demo.sql
+**/tests.py
+**/test_*.py
+**/*_test.py
+**/testing.py
+**/tests/
+!database/python_platform_demo.sql
 runPlatform.sh
 frontend/dist/
+database/backups/
+database/sync_python_platform_to_server.sql
 .venv/
 run/

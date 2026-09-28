@@ -27,6 +27,8 @@ class AdminClassRepository:
             "title": row.get("title") or "",
             "teaching_class": row.get("teaching_class") or "",
             "academic_year": row.get("academic_year") or "",
+            "graph_class_id": str(row["graph_class_id"]) if row.get("graph_class_id") is not None else None,
+            "graph_class_title": row.get("graph_class_title") or "",
             "teacher_name": row.get("teacher_name") or "",
             "is_active": bool(row.get("is_active", 1)),
             "teacher_count": int(row.get("teacher_count") or 0),
@@ -47,14 +49,16 @@ class AdminClassRepository:
         where = " AND ".join(clauses)
         with self.connection.cursor() as cursor:
             cursor.execute(
-                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.is_active,
+                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,
+                           gc.title AS graph_class_title,c.teacher_name,c.is_active,
                            COUNT(DISTINCT CASE WHEN tc.is_active=1 THEN tc.teacher_username END) AS teacher_count,
                            COUNT(DISTINCT CASE WHEN sc.is_active=1 THEN sc.student_username END) AS student_count
                     FROM classes c
+                    LEFT JOIN graph_classes gc ON gc.id=c.graph_class_id
                     LEFT JOIN classes_teacher tc ON tc.class_id=c.id
                     LEFT JOIN classes_student sc ON sc.class_id=c.id
                     WHERE {where}
-                    GROUP BY c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.is_active
+                    GROUP BY c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,gc.title,c.teacher_name,c.is_active
                     ORDER BY c.academic_year DESC,c.id DESC""",
                 params,
             )
@@ -63,10 +67,12 @@ class AdminClassRepository:
     def get_class(self, class_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.is_active,
+                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,
+                          gc.title AS graph_class_title,c.teacher_name,c.is_active,
                           (SELECT COUNT(*) FROM classes_teacher tc WHERE tc.class_id=c.id AND tc.is_active=1) AS teacher_count,
                           (SELECT COUNT(*) FROM classes_student sc WHERE sc.class_id=c.id AND sc.is_active=1) AS student_count
-                   FROM classes c WHERE c.id=%s LIMIT 1""",
+                   FROM classes c LEFT JOIN graph_classes gc ON gc.id=c.graph_class_id
+                   WHERE c.id=%s LIMIT 1""",
                 (class_id,),
             )
             row = cursor.fetchone()
@@ -83,9 +89,10 @@ class AdminClassRepository:
         params: tuple[Any, ...] = (title, teaching_class, academic_year, exclude_id) if exclude_id is not None else (title, teaching_class, academic_year)
         with self.connection.cursor() as cursor:
             cursor.execute(
-                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.is_active,
+                f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,
+                          gc.title AS graph_class_title,c.teacher_name,c.is_active,
                           0 AS teacher_count, 0 AS student_count
-                   FROM classes c
+                   FROM classes c LEFT JOIN graph_classes gc ON gc.id=c.graph_class_id
                    WHERE c.title=%s AND c.teaching_class=%s AND c.academic_year=%s
                    {exclusion}
                    LIMIT 1""",
@@ -94,12 +101,12 @@ class AdminClassRepository:
             row = cursor.fetchone()
         return self._class(row) if row else None
 
-    def create_class(self, title: str, teaching_class: str, academic_year: str) -> dict[str, Any]:
+    def create_class(self, title: str, teaching_class: str, academic_year: str, graph_class_id: str | None = None) -> dict[str, Any]:
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """INSERT INTO classes (title,teaching_class,academic_year,teacher_name,is_active)
-                   VALUES (%s,%s,%s,'',1)""",
-                (title, teaching_class, academic_year),
+                """INSERT INTO classes (title,teaching_class,academic_year,graph_class_id,teacher_name,is_active)
+                   VALUES (%s,%s,%s,%s,'',1)""",
+                (title, teaching_class, academic_year, graph_class_id),
             )
             class_id = cursor.lastrowid
         return self.get_class(str(class_id)) or {}
@@ -112,7 +119,7 @@ class AdminClassRepository:
     def update_class(self, class_id: str, data: dict[str, Any]) -> bool:
         values: list[Any] = []
         assignments: list[str] = []
-        for field in ("title", "teaching_class", "academic_year"):
+        for field in ("title", "teaching_class", "academic_year", "graph_class_id"):
             if field in data:
                 assignments.append(f"{field}=%s")
                 values.append(data[field])
@@ -125,6 +132,18 @@ class AdminClassRepository:
         with self.connection.cursor() as cursor:
             cursor.execute(f"UPDATE classes SET {', '.join(assignments)} WHERE id=%s", values)
             return cursor.rowcount > 0
+
+    def graph_class_exists(self, graph_class_id: str | None) -> bool:
+        if graph_class_id in (None, ""):
+            return True
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT 1 FROM graph_classes WHERE id=%s LIMIT 1", (graph_class_id,))
+            return cursor.fetchone() is not None
+
+    def graph_class_options(self) -> list[dict[str, Any]]:
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT id,title,uid FROM graph_classes ORDER BY LOWER(COALESCE(title,'')),id")
+            return [{"id": str(row["id"]), "title": row.get("title") or "未命名知识图谱", "uid": row.get("uid") or ""} for row in cursor.fetchall()]
 
     def account_options(self, role: str) -> list[dict[str, Any]]:
         table = {"teacher": "user_teachers", "student": "user_students"}.get(role)

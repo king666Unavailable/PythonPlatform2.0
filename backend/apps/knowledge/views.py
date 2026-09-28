@@ -5,7 +5,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from api.permissions import IsTeacher, IsTeacherOrStudent, session_user
+from apps.context.services import CurrentClassService
 from repositories.neo4j_content_repository import Neo4jContentRepository
+from repositories.mysql_graph_repository import MySQLGraphRepository
 from repositories.learning_repository import LearningRepository
 
 from .services import KnowledgeGraphBackendUnavailable, KnowledgeGraphService
@@ -15,19 +17,31 @@ NODE_TYPES = {"Class", "Theme", "Knowledge", "Point"}
 PARENT_TYPES = {"Theme": "Class", "Knowledge": "Theme", "Point": "Knowledge"}
 
 
+def _graph_scope(request) -> tuple[str | None, str | None]:
+    current = CurrentClassService().require(request)
+    graph_class_id = current.get("graph_class_id")
+    if graph_class_id in (None, ""):
+        return None, None
+    with MySQLGraphRepository() as catalog:
+        return catalog.uid_for_id(graph_class_id), str(graph_class_id)
+
+
 @api_view(["GET"])
 @permission_classes([IsTeacherOrStudent])
 def knowledge_graph(request):
     """Return the read-only four-level curriculum graph."""
 
     try:
-        graph = KnowledgeGraphService().get_graph()
+        _, current = CurrentClassService().load(request)
+        graph = KnowledgeGraphService().get_graph(current.get("graph_class_id") if current else None)
     except KnowledgeGraphBackendUnavailable:
         return Response(
             {"message": "知识图谱服务暂不可用，请检查 Neo4j 配置。", "code": "KNOWLEDGE_GRAPH_BACKEND_UNAVAILABLE"},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-    return Response(graph.public_dict())
+    payload = graph.public_dict()
+    payload.setdefault("meta", {})["graph_configured"] = bool(current and current.get("graph_class_id"))
+    return Response(payload)
 
 
 @api_view(["GET"])
@@ -35,8 +49,9 @@ def knowledge_graph(request):
 def node_list(request):
     node_type = request.query_params.get("type", "Point")
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
-            items = repository.list_nodes(node_type)
+            items = repository.list_nodes(node_type, graph_uid)
     except Exception:
         return Response({"message": "知识节点服务暂不可用。", "code": "KNOWLEDGE_BACKEND_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     return Response({"items": items, "meta": {"node_type": node_type, "total": len(items)}})
@@ -46,19 +61,29 @@ def node_list(request):
 @permission_classes([IsTeacher])
 def management_structure(request):
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
-            structure = repository.fetch_management_structure()
+            structure = repository.fetch_management_structure(graph_uid, graph_ref)
     except Exception:
         return Response({"message": "知识图谱结构暂不可用。", "code": "KNOWLEDGE_BACKEND_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    return Response({"graph": structure, "meta": {"read_only": False, "source": "Neo4j"}})
+    return Response({
+        "graph": structure,
+        "meta": {
+            "read_only": False,
+            "source": "Neo4j",
+            "question_source": "MySQL",
+            "graph_configured": bool(graph_uid or graph_ref),
+        },
+    })
 
 
 @api_view(["GET"])
 @permission_classes([IsTeacher])
 def node_detail(request, node_id: str):
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
-            node = repository.get_management_node(node_id)
+            node = repository.get_management_node(node_id, graph_uid, graph_ref)
     except Exception:
         return Response({"message": "知识节点详情暂不可用。", "code": "KNOWLEDGE_BACKEND_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     if not node:
@@ -70,8 +95,9 @@ def node_detail(request, node_id: str):
 @permission_classes([IsTeacher])
 def node_delete_impact(request, node_id: str):
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
-            impact = repository.get_delete_impact(node_id)
+            impact = repository.get_delete_impact(node_id, graph_uid, graph_ref)
     except Exception:
         return Response({"message": "知识节点影响评估暂不可用。", "code": "KNOWLEDGE_BACKEND_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     if not impact:
@@ -96,9 +122,12 @@ def node_create(request):
     if node_type == "Class" and (parent_type or parent_id):
         return Response({"message": "课程节点不能设置父节点。", "code": "NODE_PARENT_INVALID"}, status=status.HTTP_400_BAD_REQUEST)
     try:
+        graph_uid, graph_ref = _graph_scope(request)
+        if not graph_uid and not graph_ref:
+            return Response({"message": "当前教学班尚未配置知识图谱，请先在教学班管理中选择。", "code": "GRAPH_CLASS_REQUIRED"}, status=status.HTTP_409_CONFLICT)
         with Neo4jContentRepository() as repository:
             if expected_parent:
-                parent = repository.get_management_node(parent_id)
+                parent = repository.get_management_node(parent_id, graph_uid, graph_ref)
                 if not parent or parent.get("type") != expected_parent.lower():
                     return Response({"message": "所选父节点不存在或层级不匹配。", "code": "NODE_PARENT_INVALID"}, status=status.HTTP_400_BAD_REQUEST)
             node = repository.create_node(node_type, title, request.data.get("properties", {}))
@@ -126,7 +155,10 @@ def node_update(request, node_id: str):
         if requested_type == "Class" and (parent_type or parent_id):
             return Response({"message": "课程节点不能设置父节点。", "code": "NODE_PARENT_INVALID"}, status=status.HTTP_400_BAD_REQUEST)
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
+            if not repository.get_management_node(node_id, graph_uid, graph_ref):
+                return Response({"message": "知识节点不存在。", "code": "NODE_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
             node = repository.update_node(node_id, request.data, parent_type, parent_id)
     except Exception:
         return Response({"message": "知识节点修改失败。", "code": "NODE_UPDATE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)
@@ -139,11 +171,15 @@ def node_update(request, node_id: str):
 @permission_classes([IsTeacher])
 def node_delete(request, node_id: str):
     try:
+        graph_uid, graph_ref = _graph_scope(request)
         with Neo4jContentRepository() as repository:
+            if not repository.get_management_node(node_id, graph_uid, graph_ref):
+                return Response({"message": "知识节点不存在。", "code": "NODE_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
             deleted = repository.delete_node(node_id)
     except ValueError:
         with Neo4jContentRepository() as repository:
-            impact = repository.get_delete_impact(node_id)
+            graph_uid, graph_ref = _graph_scope(request)
+            impact = repository.get_delete_impact(node_id, graph_uid, graph_ref)
         return Response({"message": "该节点仍有下级节点或关联题目，不能直接删除。", "code": "NODE_HAS_DEPENDENCIES", "impact": impact}, status=status.HTTP_409_CONFLICT)
     except Exception:
         return Response({"message": "知识节点删除失败。", "code": "NODE_DELETE_FAILED"}, status=status.HTTP_400_BAD_REQUEST)

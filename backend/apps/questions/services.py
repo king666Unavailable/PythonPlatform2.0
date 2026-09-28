@@ -28,10 +28,10 @@ class QuestionService:
             logger.exception("question_backend_unavailable", extra={"error_type": type(exc).__name__})
             raise QuestionBackendUnavailable from exc
 
-    def get(self, question_id: str) -> Question:
+    def get(self, question_id: str, graph_class_id: str | None = None) -> Question:
         try:
             with MySQLQuestionRepository() as repository:
-                question = repository.find_by_id(question_id)
+                question = repository.find_by_id(question_id, graph_class_id)
         except Exception as exc:
             logger.exception("question_backend_unavailable", extra={"error_type": type(exc).__name__})
             raise QuestionBackendUnavailable from exc

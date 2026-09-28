@@ -4,6 +4,7 @@ export interface TeachingClass {
   teaching_class: string
   academic_year: string
   teacher_name: string
+  graph_class_id: string | null
   enrollment_type?: string
 }
 

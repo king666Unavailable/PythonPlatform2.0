@@ -3,10 +3,8 @@ import type { StudentProfileReport } from '@/types/student'
 import type { KnowledgeGraphResponse } from '@/types/knowledge'
 import type { StudentMasteryResponse } from '@/types/mastery'
 import type { LearningProfileReport } from '@/types/learningProfile'
-import type { LearningPathResponse, StudentAnalyticsResponse } from '@/types/analytics'
 import type { Question, QuestionListResponse } from '@/types/question'
 import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, TeacherStudentProfileResponse } from '@/types/teacher'
-import type { WorkspaceData } from '@/types/workspace'
 import type { ClassContextResponse, TeachingClass } from '@/types/classContext'
 import type { NavigationVisibilityItem } from '@/types/navigation'
 
@@ -130,10 +128,6 @@ export async function logout() {
   return request<AuthResponse>('/api/v1/auth/logout', { method: 'POST' })
 }
 
-export function checkRoleAccess(role: 'teacher' | 'student' | 'admin') {
-  return request<{ access: string; role: string }>(`/api/v1/auth/access/${role}`)
-}
-
 export function fetchStudentProfile() {
   return request<StudentProfileReport>('/api/v1/student/me')
 }
@@ -164,16 +158,22 @@ export function fetchStudentLearningProfile() {
   return request<LearningProfileReport>('/api/v1/student/me/learning-profile')
 }
 
-export function fetchLearningPath() {
-  return request<LearningPathResponse>('/api/v1/student/me/learning-path')
+export function fetchClassAnalytics(classId = 'all', page = 1, pageSize = 20) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return request<ClassAnalyticsResponse>(`/api/v1/classes/${encodeURIComponent(classId)}/analytics?${params.toString()}`)
 }
 
-export function fetchStudentAnalytics() {
-  return request<StudentAnalyticsResponse>('/api/v1/student/me/analytics')
+export interface ClassAlertRules {
+  need_care: Record<string, { enabled: boolean; threshold: number }>
+  excellent: Record<string, { enabled: boolean; threshold: number }>
 }
 
-export function fetchClassAnalytics(classId = 'all') {
-  return request<ClassAnalyticsResponse>(`/api/v1/classes/${encodeURIComponent(classId)}/analytics`)
+export function fetchClassAlertPreferences() {
+  return request<{ class_id: string; config: ClassAlertRules }>('/api/v1/teacher/class/alert-preferences')
+}
+
+export function saveClassAlertPreferences(config: ClassAlertRules) {
+  return request<{ class_id: string; config: ClassAlertRules }>('/api/v1/teacher/class/alert-preferences', { method: 'PUT', body: JSON.stringify(config) })
 }
 
 export function fetchTeacherStudentProfile(studentId: string) {
@@ -188,6 +188,15 @@ export function fetchTeacherClassMastery(nodeType = '', nodeId = '') {
   }
   const query = params.toString()
   return request<ClassKnowledgeMasteryResponse>(`/api/v1/teacher/class/knowledge-mastery${query ? `?${query}` : ''}`)
+}
+
+export function refreshTeacherClassMastery() {
+  return request<{ message: string; refresh: { class_id: string; student_class_count: number; node_count: number }; report: ClassKnowledgeMasteryResponse }>(
+    '/api/v1/teacher/class/knowledge-mastery/refresh',
+    { method: 'POST' },
+    30000,
+    '知识掌握度计算超时，请稍后重试。',
+  )
 }
 
 export function fetchTeacherClasses() {
@@ -220,11 +229,13 @@ export function fetchKnowledgeGraph() {
   return request<KnowledgeGraphResponse>('/api/v1/knowledge-graph', {}, 8000)
 }
 
-export function fetchQuestions(keyword = '', typeCode = '', pointTitle = '', page = 1, pageSize = 20) {
+export function fetchQuestions(keyword = '', typeCode = '', pointTitle = '', page = 1, pageSize = 20, pointStatus = '', pointTitles: string[] = []) {
   const params = new URLSearchParams()
   if (keyword.trim()) params.set('q', keyword.trim())
   if (typeCode) params.set('type', typeCode)
   if (pointTitle.trim()) params.set('point', pointTitle.trim())
+  if (pointStatus) params.set('point_status', pointStatus)
+  if (pointTitles.length) params.set('points', pointTitles.join(','))
   params.set('page', String(page))
   params.set('page_size', String(pageSize))
   const query = params.toString()
@@ -233,10 +244,6 @@ export function fetchQuestions(keyword = '', typeCode = '', pointTitle = '', pag
 
 export function fetchQuestionDetail(questionId: string) {
   return request<{ question: Question }>(`/api/v1/questions/${encodeURIComponent(questionId)}`)
-}
-
-export function fetchFeatureWorkspace(featureId: string) {
-  return request<WorkspaceData>(`/api/v1/workspaces/${encodeURIComponent(featureId)}`)
 }
 
 export function fetchStudentAssignments() {
@@ -338,7 +345,7 @@ export interface KnowledgeManagementNode {
 }
 
 export function fetchKnowledgeManagementStructure() {
-  return request<{ graph: { nodes: KnowledgeManagementNode[]; edges: Array<{ source: string; target: string; relation: string }> }; meta: { read_only: boolean; source: string } }>('/api/v1/teacher/knowledge/structure')
+  return request<{ graph: { nodes: KnowledgeManagementNode[]; edges: Array<{ source: string; target: string; relation: string }> }; meta: { read_only: boolean; source: string; graph_configured?: boolean } }>('/api/v1/teacher/knowledge/structure')
 }
 
 export function fetchKnowledgeManagementNode(nodeId: string) {

@@ -377,7 +377,8 @@ def classes(request):
         items = repository.list_classes(keyword, class_status)
         teachers = repository.account_options("teacher")
         students = repository.account_options("student")
-    return Response({"items": items, "meta": {"total": len(items), "teachers": teachers, "students": students}})
+        graph_classes = repository.graph_class_options()
+    return Response({"items": items, "meta": {"total": len(items), "teachers": teachers, "students": students, "graph_classes": graph_classes}})
 
 
 @api_view(["POST"])
@@ -386,14 +387,17 @@ def create_class(request):
     title = str(request.data.get("title", "")).strip()
     teaching_class = str(request.data.get("teaching_class", "")).strip()
     academic_year = str(request.data.get("academic_year", "")).strip()
+    graph_class_id = str(request.data.get("graph_class_id", "")).strip() or None
     if not title or not teaching_class:
         return _error("课程名称和教学班名称不能为空。", "CLASS_INVALID", status.HTTP_400_BAD_REQUEST)
     try:
         with AdminClassRepository() as repository:
+            if not repository.graph_class_exists(graph_class_id):
+                return _error("所选知识图谱不存在。", "GRAPH_CLASS_NOT_FOUND", status.HTTP_400_BAD_REQUEST)
             existing = repository.find_existing(title, teaching_class, academic_year)
             if existing:
                 return Response({"message": "教学班已存在，可直接选择该班级。", "code": "CLASS_EXISTS", "class": existing}, status=status.HTTP_409_CONFLICT)
-            item = repository.create_class(title, teaching_class, academic_year)
+            item = repository.create_class(title, teaching_class, academic_year, graph_class_id)
         with LearningRepository() as audit:
             audit.write_audit(session_user(request), "class.create", "classes", str(item.get("id", "")), item)
         return Response({"class": item}, status=status.HTTP_201_CREATED)
@@ -404,7 +408,7 @@ def create_class(request):
 @api_view(["PATCH"])
 @permission_classes([IsAdmin])
 def update_class(request, class_id: str):
-    supported = {"title", "teaching_class", "academic_year", "is_active"}
+    supported = {"title", "teaching_class", "academic_year", "is_active", "graph_class_id"}
     if not any(field in request.data for field in supported):
         return _error("没有可更新的班级字段。", "CLASS_UPDATE_INVALID", status.HTTP_400_BAD_REQUEST)
     with AdminClassRepository() as repository:
@@ -420,6 +424,11 @@ def update_class(request, class_id: str):
                 if len(value) > limit:
                     return _error("教学班信息长度超过限制。", "CLASS_VALUE_TOO_LONG", status.HTTP_400_BAD_REQUEST)
                 update_data[field] = value
+        if "graph_class_id" in request.data:
+            graph_class_id = str(request.data.get("graph_class_id", "")).strip() or None
+            if not repository.graph_class_exists(graph_class_id):
+                return _error("所选知识图谱不存在。", "GRAPH_CLASS_NOT_FOUND", status.HTTP_400_BAD_REQUEST)
+            update_data["graph_class_id"] = graph_class_id
         if "is_active" in request.data:
             try:
                 update_data["is_active"] = _boolean(request.data.get("is_active"))

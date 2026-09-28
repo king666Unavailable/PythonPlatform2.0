@@ -108,9 +108,9 @@ class MySQLStudentMasteryRepository:
                 """
                 SELECT sm.node_type, sm.node_id, sm.mastery_score, sm.accuracy_score,
                        sm.attempted_count, sm.correct_equivalent, sm.last_answered_at,
-                       COALESCE(refs.uid, refs.original_node_id) AS graph_node_id
+                       refs.uid AS graph_node_id
                 FROM student_mastery sm
-                LEFT JOIN legacy_graph_node_refs refs
+                  LEFT JOIN graph_node_refs refs
                   ON refs.new_id=sm.node_id
                  AND refs.label_name=CASE sm.node_type
                     WHEN 'class' THEN 'Class'
@@ -145,7 +145,7 @@ class MySQLStudentMasteryRepository:
 
     def refresh_for_student(self, username: str, class_id: str) -> StudentMasteryReport:
         facts = self._latest_question_facts(username, class_id)
-        rows = self._build_rows(facts)
+        rows = self._build_rows(facts, self._graph_class_id(class_id))
         with self.connection.cursor() as cursor:
             cursor.execute("DELETE FROM student_mastery WHERE student_username=%s AND class_id=%s", (username, class_id))
             if rows:
@@ -193,6 +193,28 @@ class MySQLStudentMasteryRepository:
             node_count += len(report.nodes)
         return {"student_class_count": refreshed, "node_count": node_count}
 
+    def refresh_for_class(self, class_id: str) -> dict[str, int | str]:
+        """Rebuild mastery snapshots for every active student in one class."""
+
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT student_username FROM classes_student
+                   WHERE class_id=%s AND is_active=1
+                   ORDER BY student_username""",
+                (class_id,),
+            )
+            usernames = [str(row["student_username"]) for row in cursor.fetchall()]
+
+        node_count = 0
+        for username in usernames:
+            report = self.refresh_for_student(username, class_id)
+            node_count += len(report.nodes)
+        return {
+            "class_id": str(class_id),
+            "student_class_count": len(usernames),
+            "node_count": node_count,
+        }
+
     def _latest_question_facts(self, username: str, class_id: str) -> list[dict[str, Any]]:
         """Use the latest formal grade for each question, matching legacy finish relations."""
 
@@ -238,8 +260,8 @@ class MySQLStudentMasteryRepository:
             latest.setdefault(question_id, row)
         return list(latest.values())
 
-    def _build_rows(self, facts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-        relations, metadata = self._graph_structure()
+    def _build_rows(self, facts: Iterable[dict[str, Any]], graph_class_id: str | None) -> list[dict[str, Any]]:
+        relations, metadata = self._graph_structure(graph_class_id)
         evidence: dict[tuple[str, int], dict[str, Any]] = {}
         for fact in facts:
             question_id = int(fact["question_id"])
@@ -297,23 +319,37 @@ class MySQLStudentMasteryRepository:
             )
         return rows
 
-    def _graph_structure(self) -> tuple[dict[str, dict[int, set[int]]], dict[tuple[str, int], dict[str, Any]]]:
+    def _graph_class_id(self, class_id: str) -> str | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute("SELECT graph_class_id FROM classes WHERE id=%s LIMIT 1", (class_id,))
+            row = cursor.fetchone()
+        value = (row or {}).get("graph_class_id")
+        return str(value) if value is not None else None
+
+    def _graph_structure(self, graph_class_id: str | None) -> tuple[dict[str, dict[int, set[int]]], dict[tuple[str, int], dict[str, Any]]]:
         relations: dict[str, dict[int, set[int]]] = {
             "question_points": defaultdict(set),
             "point_knowledge": defaultdict(set),
             "knowledge_themes": defaultdict(set),
             "theme_classes": defaultdict(set),
         }
+        if not graph_class_id:
+            return relations, {}
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT relation_type, source_id, target_id, source_label, target_label
-                FROM legacy_graph_relationships
-                WHERE (relation_type='relate' AND source_label='Point' AND target_label='Test')
-                   OR (relation_type='include' AND source_label='Knowledge' AND target_label='Point')
-                   OR (relation_type='include' AND source_label='Theme' AND target_label='Knowledge')
-                   OR (relation_type='include' AND source_label='Class' AND target_label='Theme')
+                FROM graph_relationships r
+                WHERE (r.relation_type='relate' AND r.source_label='Point' AND r.target_label='Test'
+                       AND EXISTS (SELECT 1 FROM graph_points p WHERE p.id=r.source_id AND p.graph_class_id=%s))
+                   OR (r.relation_type='include' AND r.source_label='Knowledge' AND r.target_label='Point'
+                       AND EXISTS (SELECT 1 FROM graph_knowledge k WHERE k.id=r.source_id AND k.graph_class_id=%s))
+                   OR (r.relation_type='include' AND r.source_label='Theme' AND r.target_label='Knowledge'
+                       AND EXISTS (SELECT 1 FROM graph_themes t WHERE t.id=r.source_id AND t.graph_class_id=%s))
+                   OR (r.relation_type='include' AND r.source_label='Class' AND r.target_label='Theme'
+                       AND r.source_id=%s)
                 """
+                , (graph_class_id, graph_class_id, graph_class_id, graph_class_id)
             )
             for relation in cursor.fetchall():
                 source_id = int(relation["source_id"])
@@ -329,9 +365,12 @@ class MySQLStudentMasteryRepository:
                     relations["theme_classes"][target_id].add(source_id)
 
             metadata: dict[tuple[str, int], dict[str, Any]] = {}
-            for node_type, table in (("class", "classes"), ("theme", "graph_themes"), ("knowledge", "graph_knowledge"), ("point", "graph_points")):
+            for node_type, table in (("class", "graph_classes"), ("theme", "graph_themes"), ("knowledge", "graph_knowledge"), ("point", "graph_points")):
                 importance_column = "NULL AS importance" if node_type == "class" else "importance"
-                cursor.execute(f"SELECT id, title, {importance_column} FROM {table}")
+                if node_type == "class":
+                    cursor.execute(f"SELECT id, title, {importance_column} FROM {table} WHERE id=%s", (graph_class_id,))
+                else:
+                    cursor.execute(f"SELECT id, title, {importance_column} FROM {table} WHERE graph_class_id=%s", (graph_class_id,))
                 metadata.update(
                     {
                         (node_type, int(row["id"])): {"title": row.get("title"), "importance": row.get("importance")}

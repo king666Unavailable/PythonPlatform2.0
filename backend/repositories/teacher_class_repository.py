@@ -33,6 +33,7 @@ class TeacherClassRepository:
             "title": row.get("title") or "",
             "teaching_class": row.get("teaching_class") or "",
             "academic_year": row.get("academic_year") or "",
+            "graph_class_id": str(row["graph_class_id"]) if row.get("graph_class_id") is not None else None,
             "is_active": bool(row.get("is_active", 1)),
             "teacher_count": int(row.get("teacher_count") or 0),
             "student_count": int(row.get("student_count") or 0),
@@ -41,7 +42,7 @@ class TeacherClassRepository:
     def list_owned_classes(self, teacher_username: str) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.is_active,
+                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,c.is_active,
                           1 AS teacher_count,
                           COUNT(DISTINCT CASE WHEN sc.is_active=1 THEN sc.student_username END) AS student_count
                    FROM classes c

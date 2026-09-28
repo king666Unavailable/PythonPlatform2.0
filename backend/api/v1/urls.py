@@ -11,7 +11,6 @@ urlpatterns = [
     path("student/", include("apps.student.urls")),
     path("", include("apps.context.urls")),
     path("", include("apps.mastery.urls")),
-    path("", include("apps.analytics.urls")),
     path("", include("apps.teacher.urls")),
     path("", include("apps.knowledge.urls")),
     path("", include("apps.questions.urls")),

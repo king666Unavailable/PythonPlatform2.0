@@ -20,12 +20,13 @@ export interface LearningProfileReport {
   }
   overview: {
     overall_score: number | null
-    dimensions: { progress: number | null; habit: number | null; ability: number | null }
+    dimensions: { progress: number; habit: number; ability: number }
     class_average: { progress: number | null; habit: number | null; ability: number | null }
     labels: string[]
   }
   progress: {
     score: number | null
+    radar_score: number
     knowledge_mastery: number | null
     scored_assignment_count: number
     average_score: number | null
@@ -34,6 +35,7 @@ export interface LearningProfileReport {
   }
   habit: {
     score: number | null
+    radar_score: number
     submission_rate: number
     on_time_rate: number | null
     active_days: number
@@ -43,12 +45,12 @@ export interface LearningProfileReport {
   }
   ability: {
     score: number | null
+    radar_score: number
     objective_accuracy: number | null
     subjective_accuracy: number | null
     difficulty_accuracy: Array<{ label: string; accuracy: number | null; count: number }>
     question_type_accuracy: Array<{ label: string; accuracy: number | null; count: number }>
     high_difficulty_accuracy: number | null
-    programming_included: boolean
   }
   suggestions: Array<{ dimension: string; tone: 'blue' | 'green' | 'orange'; text: string }>
   meta: {
@@ -57,6 +59,5 @@ export interface LearningProfileReport {
     class_name: string
     generated_at: string
     random_placeholder_data: boolean
-    programming_grading_note: string
   }
 }

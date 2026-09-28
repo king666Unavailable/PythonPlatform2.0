@@ -16,14 +16,17 @@ const loading = ref(true)
 const error = ref('')
 const masteryError = ref('')
 const classContext = useClassContext()
+const graphConfigured = computed(() => masteryData.value?.meta.graph_configured !== false)
 const attentionCount = computed(() => classData.value?.summary?.need_care_count ?? 0)
 const masteryValue = computed(() => {
+  if (masteryData.value && !graphConfigured.value) return '—'
   const value = masteryData.value?.summary.course_mastery
   return value == null ? '暂无数据' : `${value.toFixed(1)} 分`
 })
 const masteryHint = computed(() => {
   if (masteryError.value) return '数据暂不可用，点击查看详情'
   if (!masteryData.value) return '正在读取当前班级数据…'
+  if (!graphConfigured.value) return '当前教学班未配置知识图谱'
   return `覆盖学生 ${masteryData.value.summary.coverage_student_count} / ${masteryData.value.class.student_count} 人`
 })
 const weakPoints = computed<ClassMasteryNode[]>(() => {
@@ -100,7 +103,8 @@ watch(
             <div v-for="point in weakPoints" :key="`${point.node_type}:${point.node_id}`" class="teacher-home-weak-point">
               <span>{{ point.title }}</span><strong>{{ point.mastery_score?.toFixed(1) }} 分</strong>
             </div>
-            <p v-if="!weakPoints.length" class="teacher-home-weak-empty">暂无符合条件的薄弱知识点</p>
+            <p v-if="!graphConfigured" class="teacher-home-weak-empty">当前教学班未配置知识图谱，请联系管理员配置</p>
+            <p v-else-if="!weakPoints.length" class="teacher-home-weak-empty">暂无符合条件的薄弱知识点</p>
             <RouterLink class="teacher-home-weak-more" to="/teacher/class?tab=mastery">查看知识掌握度 <span aria-hidden="true">→</span></RouterLink>
           </div>
         </section>
