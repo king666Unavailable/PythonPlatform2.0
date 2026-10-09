@@ -93,6 +93,41 @@ class LearningRepository:
             row = cursor.fetchone()
         return self._assignment_row(row) if row else None
 
+    def update_assignment_settings(
+        self, assignment_id: str, owner_username: str, assignment: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Update assignment settings without rebuilding its question items."""
+        target_usernames = assignment.get("target_usernames", [])
+        if not isinstance(target_usernames, list):
+            target_usernames = []
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE assignments
+                SET deadline=%s, time_limit=%s, assignment_kind=%s, open_state=%s,
+                    target_usernames_json=%s, allow_answer_view=%s,
+                    owner_username=IF(owner_username='', %s, owner_username),
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE id=%s AND (owner_username=%s OR owner_username='')
+                """,
+                (
+                    str(assignment.get("deadline", "")),
+                    int(assignment.get("time_limit", 0) or 0),
+                    str(assignment.get("assignment_kind", "homework")),
+                    str(assignment.get("open_state", "yes")),
+                    _json(target_usernames),
+                    1 if assignment.get("allow_answer_view") else 0,
+                    owner_username,
+                    assignment_id,
+                    owner_username,
+                ),
+            )
+        self.connection.commit()
+        updated = self.get_assignment(assignment_id)
+        if updated and updated.get("owner_username") in ("", owner_username):
+            return updated
+        return None
+
     def list_makeup_windows(
         self, assignment_id: str | None = None, owner_username: str | None = None
     ) -> list[dict[str, Any]]:

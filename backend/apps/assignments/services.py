@@ -314,6 +314,8 @@ class AssignmentService:
             return repository.upsert_assignment(assignment, owner_username=owner_username)
 
     def update(self, assignment_id: str, data: dict[str, Any], owner_username: str, class_id: str | None = None) -> dict[str, Any]:
+        if "questions" in data or "question_titles" in data:
+            raise ValueError("调整作业设置不能修改题目列表。")
         current = self.get_for_teacher(assignment_id)
         if current.get("owner_username") not in ("", owner_username):
             raise PermissionError("assignment does not belong to teacher")
@@ -332,10 +334,11 @@ class AssignmentService:
         updated["assignment_kind"] = normalize_assignment_kind(updated.get("assignment_kind"), allow_mock=False)
         if "deadline" in updated:
             updated["deadline"] = normalize_deadline(updated.get("deadline", ""))
-        if "question_titles" in data and "questions" not in data:
-            updated["questions"] = data["question_titles"]
         with LearningRepository() as repository:
-            return repository.upsert_assignment(updated, owner_username=owner_username)
+            result = repository.update_assignment_settings(assignment_id, owner_username, updated)
+        if not result:
+            raise AssignmentNotFound
+        return result
 
     def create_mock(self, data: dict[str, Any], username: str, class_id: str | None = None) -> dict[str, Any]:
         questions = [str(item) for item in data.get("questions", []) if str(item).strip()]
