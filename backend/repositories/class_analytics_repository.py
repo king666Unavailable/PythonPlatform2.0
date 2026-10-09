@@ -397,3 +397,213 @@ class MySQLClassAnalyticsRepository:
                 tuple(assignment_ids),
             )
             return {str(row["assignment_id"]): int(row["total"] or 0) for row in cursor.fetchall()}
+
+    def assignment_item_scores(self, assignment_ids: tuple[str, ...]) -> dict[str, list[dict]]:
+        """Return per-position point weights configured on assignment items."""
+        if not assignment_ids:
+            return {}
+        placeholders = ",".join(["%s"] * len(assignment_ids))
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""SELECT assignment_id, position, score
+                    FROM assignment_items
+                    WHERE assignment_id IN ({placeholders})
+                    ORDER BY assignment_id, position""",
+                tuple(assignment_ids),
+            )
+            result: dict[str, list[dict]] = {}
+            for row in cursor.fetchall():
+                result.setdefault(str(row["assignment_id"]), []).append(
+                    {
+                        "position": int(row["position"]),
+                        "score": float(row["score"]) if row.get("score") is not None else None,
+                    }
+                )
+            return result
+
+    def get_submission_grades_for_edit(
+        self,
+        assignment_id: str,
+        student_username: str,
+        teacher_username: str,
+        class_id: str,
+    ) -> dict | None:
+        """Load the latest non-draft submission for a teacher's class assignment."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, title FROM assignments
+                   WHERE id=%s AND owner_username=%s
+                     AND (class_id=%s OR class_id IS NULL)
+                   LIMIT 1""",
+                (assignment_id, teacher_username, class_id),
+            )
+            assignment = cursor.fetchone()
+            if not assignment:
+                return None
+
+            cursor.execute(
+                """SELECT id, status, attempt_no, submission_mode, makeup_window_id,
+                          submitted_at, updated_at
+                   FROM submissions
+                   WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
+                   ORDER BY attempt_no DESC, updated_at DESC, id DESC
+                   LIMIT 1""",
+                (assignment_id, student_username),
+            )
+            submission = cursor.fetchone()
+            if not submission:
+                return None
+
+            cursor.execute(
+                """SELECT ai.position, ai.question_ref, ai.score AS max_score,
+                          COALESCE(q.title, ai.question_ref, '') AS question_title,
+                          g.score, g.status AS grade_status, g.feedback, g.provider
+                   FROM assignment_items ai
+                   LEFT JOIN graph_questions q ON q.id=ai.question_id
+                   LEFT JOIN submission_grades g
+                     ON g.submission_id=%s AND g.question_position=ai.position
+                   WHERE ai.assignment_id=%s
+                   ORDER BY ai.position""",
+                (submission["id"], assignment_id),
+            )
+            items = [
+                {
+                    "position": int(row["position"]),
+                    "title": str(row.get("question_title") or "") or f"第{int(row['position']) + 1}题",
+                    "max_score": float(row["max_score"]) if row.get("max_score") is not None else None,
+                    "score": float(row["score"]) if row.get("score") is not None else None,
+                    "status": str(row.get("grade_status") or ""),
+                    "feedback": str(row.get("feedback") or ""),
+                    "provider": str(row.get("provider") or ""),
+                }
+                for row in cursor.fetchall()
+            ]
+
+        return {
+            "assignment_id": str(assignment_id),
+            "assignment_title": str(assignment["title"]),
+            "student_username": student_username,
+            "submission_id": str(submission["id"]),
+            "submission_status": str(submission["status"]),
+            "submission_mode": str(submission.get("submission_mode") or "normal"),
+            "makeup_window_id": str(submission["makeup_window_id"]) if submission.get("makeup_window_id") is not None else None,
+            "submitted_at": submission.get("submitted_at"),
+            "items": items,
+        }
+
+    def update_submission_grades_manually(
+        self,
+        assignment_id: str,
+        student_username: str,
+        teacher_username: str,
+        class_id: str,
+        grade_scores: dict[int, float],
+    ) -> dict | None:
+        """Update per-question grades and write the audit event atomically."""
+        self.connection.begin()
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    """SELECT id, title FROM assignments
+                       WHERE id=%s AND owner_username=%s
+                         AND (class_id=%s OR class_id IS NULL)
+                       LIMIT 1 FOR UPDATE""",
+                    (assignment_id, teacher_username, class_id),
+                )
+                assignment = cursor.fetchone()
+                if not assignment:
+                    self.connection.rollback()
+                    return None
+
+                cursor.execute(
+                    """SELECT id, status FROM submissions
+                       WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
+                       ORDER BY attempt_no DESC, updated_at DESC, id DESC
+                       LIMIT 1 FOR UPDATE""",
+                    (assignment_id, student_username),
+                )
+                submission = cursor.fetchone()
+                if not submission or str(submission["status"]) != "graded":
+                    self.connection.rollback()
+                    return None
+
+                cursor.execute(
+                    """SELECT position FROM assignment_items
+                       WHERE assignment_id=%s ORDER BY position FOR UPDATE""",
+                    (assignment_id,),
+                )
+                item_rows = cursor.fetchall()
+                expected_positions = {int(row["position"]) for row in item_rows}
+                cursor.execute(
+                    """SELECT question_position, score, status, provider
+                       FROM submission_grades
+                       WHERE submission_id=%s ORDER BY question_position FOR UPDATE""",
+                    (submission["id"],),
+                )
+                grade_rows = cursor.fetchall()
+                grades_by_position = {int(row["question_position"]): row for row in grade_rows}
+                if (
+                    not expected_positions
+                    or set(grade_scores) != expected_positions
+                    or set(grades_by_position) != expected_positions
+                    or any(
+                        grades_by_position[position].get("score") is None
+                        or str(grades_by_position[position].get("status") or "")
+                        not in {"graded", "code_structure_error", "function_not_found"}
+                        for position in expected_positions
+                    )
+                ):
+                    self.connection.rollback()
+                    return None
+
+                changes = []
+                for position in sorted(expected_positions):
+                    row = grades_by_position[position]
+                    old_score = float(row["score"])
+                    new_score = float(grade_scores[position])
+                    if old_score == new_score:
+                        continue
+                    cursor.execute(
+                        """UPDATE submission_grades
+                           SET score=%s, status='graded', feedback='教师已调整本题得分', provider='teacher_manual',
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE submission_id=%s AND question_position=%s""",
+                        (new_score, submission["id"], position),
+                    )
+                    changes.append(
+                        {
+                            "question_position": position,
+                            "old_score": old_score,
+                            "new_score": new_score,
+                            "previous_provider": str(row.get("provider") or ""),
+                        }
+                    )
+
+                if changes:
+                    cursor.execute(
+                        """INSERT INTO audit_logs
+                           (actor_username, actor_role, action, resource_type, resource_id, detail_json)
+                           VALUES (%s, 'teacher', 'submission.grade.manual_update', 'submission', %s, %s)""",
+                        (
+                            teacher_username,
+                            str(submission["id"]),
+                            json.dumps(
+                                {
+                                    "assignment_id": str(assignment_id),
+                                    "assignment_title": str(assignment["title"]),
+                                    "student_username": student_username,
+                                    "changes": changes,
+                                },
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        ),
+                    )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+        return self.get_submission_grades_for_edit(
+            assignment_id, student_username, teacher_username, class_id
+        )

@@ -18,6 +18,7 @@ export interface TeacherClassStudent {
   unsubmitted_assignments: string[]
   failed_assignments: string[]
   scores: Record<string, number>
+  assignment_scores: Record<string, number | null>
   needs_attention: boolean
   excellent: boolean
 }
@@ -45,7 +46,7 @@ export interface ClassAnalyticsResponse {
       classwork: Record<string, number>
     }
   }
-  tests: Array<{ name: string; category: 'homework' | 'classwork' }>
+  tests: Array<{ id: string; name: string; category: 'homework' | 'classwork' }>
   alerts: {
     need_care: TeacherAlertStudent[]
     excellent: TeacherAlertStudent[]
@@ -61,6 +62,31 @@ export interface ClassAnalyticsResponse {
       total_pages: number
     }
   }
+}
+
+export interface TeacherQuestionGrade {
+  position: number
+  title: string
+  max_score: number | null
+  score: number | null
+  status: string
+  feedback: string
+  provider: string
+}
+
+export interface TeacherAssignmentGradeReport {
+  assignment_id: string
+  assignment_title: string
+  student_username: string
+  submission_id: string
+  submission_status: string
+  submission_mode: string
+  makeup_window_id: string | null
+  submitted_at: string | null
+  items: TeacherQuestionGrade[]
+  total_score: number | null
+  max_total_score: number
+  score_calculation: 'weighted' | 'percentage_average'
 }
 
 export interface TeacherStudentProfileResponse {

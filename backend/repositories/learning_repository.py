@@ -186,7 +186,7 @@ class LearningRepository:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT assignment_id, position, question_ref, question_id
+                SELECT assignment_id, position, question_ref, question_id, score
                 FROM assignment_items
                 WHERE assignment_id=%s
                 ORDER BY position
@@ -200,6 +200,7 @@ class LearningRepository:
                 "position": int(row["position"]),
                 "question_ref": row.get("question_ref") or "",
                 "question_id": str(row["question_id"]) if row.get("question_id") is not None else "",
+                "score": float(row["score"]) if row.get("score") is not None else None,
             }
             for row in rows
         ]
@@ -457,10 +458,11 @@ class LearningRepository:
 
         with self.connection.cursor() as cursor:
             cursor.execute(
-                "SELECT COUNT(*) AS total_questions FROM assignment_items WHERE assignment_id=%s",
+                "SELECT position, score FROM assignment_items WHERE assignment_id=%s ORDER BY position",
                 (assignment_id,),
             )
-            total_questions = int((cursor.fetchone() or {}).get("total_questions") or 0)
+            assignment_items = cursor.fetchall()
+            total_questions = len(assignment_items)
             cursor.execute(
                 """
                 SELECT question_position, score, status
@@ -471,7 +473,7 @@ class LearningRepository:
                 (submission_id,),
             )
             grades = cursor.fetchall()
-        return calculate_submission_score(grades, total_questions)
+        return calculate_submission_score(grades, total_questions, assignment_items=assignment_items)
 
     def list_grades(self, submission_id: str) -> list[dict[str, Any]]:
         with self.connection.cursor() as cursor:
@@ -971,6 +973,34 @@ class LearningRepository:
                 }
                 for row in rows
             ]
+
+            # Manual grade-adjustment audit details store the target student's
+            # username. Enrich current and historical rows with the display
+            # name without rewriting the audit event.
+            adjusted_student_usernames = {
+                str(record["detail"].get("student_username") or "")
+                for record in records
+                if record["action"] == "submission.grade.manual_update"
+                and isinstance(record.get("detail"), dict)
+                and record["detail"].get("student_username")
+            }
+            if adjusted_student_usernames:
+                placeholders = ", ".join(["%s"] * len(adjusted_student_usernames))
+                cursor.execute(
+                    f"SELECT username, name FROM user_students WHERE username IN ({placeholders})",
+                    tuple(adjusted_student_usernames),
+                )
+                student_names = {
+                    str(row["username"]): str(row.get("name") or "")
+                    for row in cursor.fetchall()
+                }
+                for record in records:
+                    detail = record.get("detail")
+                    if record["action"] != "submission.grade.manual_update" or not isinstance(detail, dict):
+                        continue
+                    username = str(detail.get("student_username") or "")
+                    if username and student_names.get(username):
+                        detail.setdefault("student_name", student_names[username])
 
             if teacher_student_scope and records:
                 usernames = list({str(record["actor_username"]) for record in records if record.get("actor_username")})

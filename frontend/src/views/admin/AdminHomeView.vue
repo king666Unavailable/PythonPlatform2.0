@@ -23,7 +23,7 @@ async function load() { loading.value = true; try { const [accountResult, logRes
 const roleLabels: Record<string, string> = { student: '学生', teacher: '教师', admin: '管理员' }
 const actionLabels: Record<string, string> = {
   'student.login.success': '学生登录成功', 'teacher.login.success': '教师登录成功', 'admin.login.success': '管理员登录成功',
-  'logout.manual': '主动退出登录', 'submission.create': '提交作业', 'account.create': '创建账号',
+  'logout.manual': '主动退出登录', 'submission.create': '提交作业', 'submission.grade.manual_update': '调整分数', 'account.create': '创建账号',
   'account.update': '修改账号', 'account.import': '批量导入学生', 'class.create': '创建教学班',
   'class.update': '修改教学班', 'class.members.update': '调整教学班成员', 'class.student.create': '添加学生',
   'class.students.import': '批量导入学生', 'assignment.create': '发布作业', 'assignment.update': '调整作业',
@@ -63,6 +63,16 @@ function recentOperationDescription(log: Record<string, unknown>) {
   if (action.endsWith('.login.success')) return `${actor}「${actorName}」登录成功`
   if (action === 'logout.manual') return `${actor}「${actorName}」主动退出登录`
   if (action === 'submission.create') return title ? `学生提交作业「${title}」` : '学生提交作业'
+  if (action === 'submission.grade.manual_update') {
+    const student = auditText(detail.student_name) || auditText(detail.student_username) || '未知学生'
+    const changes = Array.isArray(detail.changes) ? detail.changes as Array<Record<string, unknown>> : []
+    const summary = changes.map((change) => {
+      const position = Number(change.question_position)
+      const question = Number.isInteger(position) && position >= 0 ? `第 ${position + 1} 题` : '题目'
+      return `${question} ${auditText(change.old_score)} → ${auditText(change.new_score)} 分`
+    }).join('；')
+    return `为学生「${student}」调整作业「${title || '作业已失效'}」的分数${summary ? `：${summary}` : ''}`
+  }
   if (action === 'account.update') {
     const changes = Array.isArray(detail.changes) ? detail.changes as Array<Record<string, unknown>> : []
     const summary = changes.map((change) => {

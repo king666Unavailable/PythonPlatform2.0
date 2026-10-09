@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from apps.code_runner.services import GlotClient, GlotNotConfigured, GlotUnavailable
+from .submission_scoring import calculate_submission_score
 
 from .programming import (
     build_execution_files,
@@ -63,7 +64,17 @@ class ScoringService:
         if pending or unavailable:
             score = None
         else:
-            score = round(sum(float(item["score"] or 0) for item in item_results) / len(item_results), 2) if item_results else None
+            score = calculate_submission_score(
+                [
+                    {
+                        "question_position": item["position"],
+                        "score": item["score"],
+                        "status": item["status"],
+                    }
+                    for item in item_results
+                ],
+                len(item_results),
+            )
         status = "grading_unavailable" if unavailable else "grading" if pending else "graded"
         return {"score": score, "status": status, "items": item_results}
 

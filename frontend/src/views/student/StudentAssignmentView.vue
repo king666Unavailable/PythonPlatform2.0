@@ -11,6 +11,7 @@ import { formatDate } from '@/utils/format'
 
 interface AssignmentQuestion {
   position: number
+  max_score?: number | null
   id: string
   title: string
   type: string
@@ -343,13 +344,13 @@ onBeforeUnmount(() => {
         <div v-if="viewMode === 'result'" class="assignment-score"><span>本次得分</span><strong>{{ assignment.submission?.score ?? '待更新' }}<small v-if="assignment.submission?.score !== null && assignment.submission?.score !== undefined"> 分</small></strong></div>
       </aside>
       <section class="answer-main content-card" :class="{ 'wrong-question-card': isWrong(currentQuestion) }">
-        <div class="answer-main-header"><div><div class="question-meta"><span class="question-counter">第 {{ activeIndex + 1 }} 题 / 共 {{ assignment.questions.length }} 题</span><span v-if="!isReadOnly" class="question-timer">本题用时 {{ formatDuration(currentQuestionTime) }}</span></div><h3>{{ currentQuestion?.title }}</h3></div><StatusBadge class="question-type-badge" :label="currentQuestion?.type || '题目'" tone="blue" /></div><InlineMessage v-if="showOwnAnswers && !canViewStandardAnswers && answerViewMessage" :message="answerViewMessage" tone="info" />
+        <div class="answer-main-header"><div><div class="question-meta"><span class="question-counter">第 {{ activeIndex + 1 }} 题 / 共 {{ assignment.questions.length }} 题</span><span v-if="currentQuestion?.max_score !== null && currentQuestion?.max_score !== undefined" class="question-max-score">本题分值 {{ currentQuestion.max_score }} 分</span><span v-if="!isReadOnly" class="question-timer">本题用时 {{ formatDuration(currentQuestionTime) }}</span></div><h3>{{ currentQuestion?.title }}</h3></div><StatusBadge class="question-type-badge" :label="currentQuestion?.type || '题目'" tone="blue" /></div><InlineMessage v-if="showOwnAnswers && !canViewStandardAnswers && answerViewMessage" :message="answerViewMessage" tone="info" />
         <div v-if="currentQuestion" class="answer-content">
           <div class="question-statement-wrap">
             <div ref="questionStatementRef" class="question-statement" @scroll="updateQuestionScrollHint">{{ currentQuestion.content || '暂无题干' }}</div>
             <button v-if="showQuestionScrollHint" class="question-scroll-arrow" type="button" aria-label="下滑查看完整题目" title="下滑查看完整题目" @click="scrollQuestionToBottom">↓</button>
           </div>
-          <div v-if="showOwnAnswers"><div class="answer-review"><span>你的答案</span><strong>{{ answerFor(currentQuestion) || '未作答' }}</strong></div><div v-if="gradeFor(currentQuestion)" class="answer-review grade-review"><span>判卷结果</span><strong>{{ gradeFor(currentQuestion)?.feedback || '已判卷' }}</strong><em v-if="gradeFor(currentQuestion)?.score !== null && gradeFor(currentQuestion)?.score !== undefined">本题得分 {{ gradeFor(currentQuestion)?.score }} 分</em></div><div v-if="canViewStandardAnswers" class="standard-answer-review"><div class="standard-answer-row"><span>标准答案</span><strong>{{ currentQuestion.answer || '暂无标准答案' }}</strong></div><div class="standard-answer-analysis"><span>解析</span><p>{{ currentQuestion.analysis || '暂无解析' }}</p></div></div></div>
+          <div v-if="showOwnAnswers"><div class="answer-review"><span>你的答案</span><strong>{{ answerFor(currentQuestion) || '未作答' }}</strong></div><div v-if="gradeFor(currentQuestion)" class="answer-review grade-review"><span>判卷结果</span><strong>{{ gradeFor(currentQuestion)?.feedback || '已判卷' }}</strong><em v-if="gradeFor(currentQuestion)?.score !== null && gradeFor(currentQuestion)?.score !== undefined">本题得分 {{ gradeFor(currentQuestion)?.score }} %</em></div><div v-if="canViewStandardAnswers" class="standard-answer-review"><div class="standard-answer-row"><span>标准答案</span><strong>{{ currentQuestion.answer || '暂无标准答案' }}</strong></div><div class="standard-answer-analysis"><span>解析</span><p>{{ currentQuestion.analysis || '暂无解析' }}</p></div></div></div>
           <div v-else-if="onlyQuestions" class="question-only-note">当前为仅查看题目模式，不显示作答内容。</div>
           <div v-else-if="currentQuestion.type_code === '1'" class="choice-list">
             <label v-for="option in choiceOptions(currentQuestion)" :key="option.label" class="choice-option" :class="{ checked: answerFor(currentQuestion) === option.label }"><input type="radio" :name="`question-${currentQuestion.position}`" :value="option.label" :checked="answerFor(currentQuestion) === option.label" @change="setAnswer(currentQuestion, option.label)" /><b>{{ option.label }}</b><span>{{ option.text }}</span></label>

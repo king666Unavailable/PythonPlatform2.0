@@ -8,7 +8,13 @@ from api.permissions import IsTeacher, session_user
 from apps.context.services import CurrentClassService
 from repositories.class_context_repository import ClassContextRepository
 
-from .services import TeacherAnalyticsBackendUnavailable, TeacherAnalyticsNotFound, TeacherAnalyticsService
+from .services import (
+    TeacherAnalyticsBackendUnavailable,
+    TeacherAnalyticsNotFound,
+    TeacherAnalyticsService,
+    TeacherGradeUpdateConflict,
+    TeacherGradeUpdateInvalid,
+)
 
 
 def _not_found(message: str) -> Response:
@@ -62,6 +68,48 @@ def class_alert_preferences(request):
         else:
             config = TeacherAnalyticsService.get_alert_preferences(current["id"], user["username"])
         return Response({"class_id": current["id"], "config": config})
+    except TeacherAnalyticsBackendUnavailable:
+        return _unavailable()
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsTeacher])
+def assignment_student_grades(request, assignment_id: str, student_username: str):
+    try:
+        user = session_user(request)
+        current = CurrentClassService().require(request)
+        with ClassContextRepository() as context:
+            if not context.student_can_use(student_username, current["id"]):
+                return Response(
+                    {"message": "该学生不属于当前教学班。", "code": "STUDENT_FORBIDDEN"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        if request.method == "PUT":
+            report = TeacherAnalyticsService.update_submission_grades_manually(
+                assignment_id,
+                student_username,
+                user["username"],
+                current["id"],
+                request.data.get("grades"),
+            )
+        else:
+            report = TeacherAnalyticsService.get_submission_grades_for_edit(
+                assignment_id, student_username, user["username"], current["id"]
+            )
+        return Response({"grade_report": report})
+    except TeacherAnalyticsNotFound:
+        return _not_found("没有找到当前教师发布的作业或该学生的已判卷提交。")
+    except TeacherGradeUpdateInvalid:
+        return Response(
+            {"message": "逐题成绩必须完整填写，且每题分数需在 0 到 100 之间。", "code": "TEACHER_GRADE_INVALID"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except TeacherGradeUpdateConflict:
+        return Response(
+            {"message": "该提交尚未完成判卷，暂时不能修改成绩。", "code": "TEACHER_GRADE_NOT_READY"},
+            status=status.HTTP_409_CONFLICT,
+        )
     except TeacherAnalyticsBackendUnavailable:
         return _unavailable()
 

@@ -101,6 +101,7 @@ const fieldLabels: Record<string, string> = {
 const actionLabels: Record<string, string> = {
   'student.login.success': '登录成功', 'teacher.login.success': '登录成功', 'admin.login.success': '登录成功',
   'logout.manual': '主动退出', 'submission.create': '提交作业',
+  'submission.grade.manual_update': '调整分数',
   'question.update': '修改题目', 'question.create': '新增题目', 'question.batch_create': '批量新增题目',
   'account.create': '创建账号', 'account.update': '修改账号', 'account.import': '批量导入账号',
   'class.create': '创建教学班', 'class.update': '修改教学班', 'class.members.update': '调整班级成员',
@@ -112,7 +113,7 @@ const actionLabels: Record<string, string> = {
 const actionGroups: Record<string, string[]> = {
   login: ['student.login.success', 'teacher.login.success', 'admin.login.success', 'logout.manual'],
   assignment: [
-    'assignment.create', 'assignment.update', 'assignment.makeup_window.create', 'assignment.makeup_window.update', 'submission.create',
+    'assignment.create', 'assignment.update', 'assignment.makeup_window.create', 'assignment.makeup_window.update', 'submission.create', 'submission.grade.manual_update',
   ],
   account: [
     'account.create', 'account.update', 'account.import', 'class.create', 'class.update', 'class.members.update',
@@ -199,6 +200,21 @@ function importedStudents(detail: Record<string, unknown>) {
     .filter((item) => !item.endsWith('（）'))
     .join('、')
 }
+function formatGradeScore(value: unknown) {
+  const score = Number(value)
+  return Number.isFinite(score) ? String(Number(score.toFixed(2))) : text(value) || '未知'
+}
+function manualGradeChanges(detail: Record<string, unknown>) {
+  if (!Array.isArray(detail.changes)) return ''
+  return detail.changes
+    .map((item) => item && typeof item === 'object' ? item as Record<string, unknown> : {})
+    .map((change) => {
+      const position = Number(change.question_position)
+      const questionLabel = Number.isInteger(position) && position >= 0 ? `第 ${position + 1} 题` : '题目'
+      return `${questionLabel}：${formatGradeScore(change.old_score)} → ${formatGradeScore(change.new_score)} 分（百分制）`
+    })
+    .join('；')
+}
 function displayObject(log: Record<string, unknown>) {
   const action = actionCode(log)
   const detail = detailOf(log)
@@ -206,6 +222,10 @@ function displayObject(log: Record<string, unknown>) {
   const title = text(detail.title) || text(detail.assignment_title)
   const teachingClass = text(detail.teaching_class)
   if (action.endsWith('.login.success') || action === 'logout.manual') return `${actor}账号「${text(log.actor_username)}」`
+  if (action === 'submission.grade.manual_update') {
+    const student = text(detail.student_name) || text(detail.student_username) || '未知学生'
+    return `${title ? `作业「${title}」` : '作业'} · 学生「${student}」`
+  }
   if (action.startsWith('submission.')) return title ? `作业「${title}」` : '作业已失效'
   if (action.startsWith('account.')) return action === 'account.import' ? `${roleLabel(log.resource_type)}账号批量导入` : `${roleLabel(log.resource_type)}账号「${text(log.resource_id)}」`
   if (action === 'class.create') return teachingClass ? `教学班「${teachingClass}」` : '新教学班'
@@ -234,6 +254,11 @@ function describeLog(log: Record<string, unknown>) {
   if (action.endsWith('.login.success')) return `${actor}账号验证通过并登录系统。`
   if (action === 'logout.manual') return `${actor}主动退出登录。`
   if (action === 'submission.create') return title ? `已提交作业「${title}」。` : '已提交作业。'
+  if (action === 'submission.grade.manual_update') {
+    const student = text(detail.student_name) || text(detail.student_username) || '未知学生'
+    const changes = manualGradeChanges(detail)
+    return `为学生「${student}」调整作业「${title || '作业已失效'}」的逐题得分${changes ? `：${changes}。` : '。'}`
+  }
   if (action === 'account.create') {
     const classes = countOf(detail.class_ids)
     return `创建了${roleLabel(log.resource_type)}账号${classes ? `，关联 ${classes} 个教学班` : ''}。`

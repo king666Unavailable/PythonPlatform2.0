@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { fetchClassAnalytics, fetchClassAlertPreferences, fetchTeacherClassMastery, fetchTeacherStudentProfile, refreshTeacherClassMastery, saveClassAlertPreferences } from '@/api/client'
+import { fetchClassAnalytics, fetchClassAlertPreferences, fetchTeacherAssignmentStudentGrades, fetchTeacherClassMastery, fetchTeacherStudentProfile, refreshTeacherClassMastery, saveClassAlertPreferences, saveTeacherAssignmentStudentGrades } from '@/api/client'
 import type { ClassAlertRules } from '@/api/client'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import ScoreLineChart from '@/components/data-display/ScoreLineChart.vue'
 import MetricCard from '@/components/ui/MetricCard.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import type { ClassKnowledgeMasteryResponse, ClassMasteryNode } from '@/types/teacher'
+import type { ClassKnowledgeMasteryResponse, ClassMasteryNode, TeacherAssignmentGradeReport } from '@/types/teacher'
 
 const classId = ref('all')
 const route = useRoute()
@@ -26,6 +26,12 @@ const selectedMasteryKey = ref('')
 const detailsPage = ref(1)
 const detailsPageSize = 20
 const detailsLoading = ref(false)
+const gradeReport = ref<TeacherAssignmentGradeReport | null>(null)
+const gradeEditorStudent = ref<{ username: string; name: string } | null>(null)
+const gradeEditorOpen = ref(false)
+const gradeEditorLoading = ref(false)
+const gradeEditorSaving = ref(false)
+const gradeEditorError = ref('')
 type AlertCategory = 'need_care' | 'excellent'
 type AlertRuleKey = string
 
@@ -142,7 +148,7 @@ async function saveAlertSettings() {
     alertRules.value = (await saveClassAlertPreferences(alertRules.value)).config
     await load()
     alertSettingsOpen.value = null
-    success.value = '学情提醒条件已保存。'
+    alertSettingsSuccess.value = '学情提醒条件已保存。'
   } catch (cause) {
     alertSettingsError.value = cause instanceof Error ? cause.message : '学情提醒条件保存失败。'
   } finally {
@@ -173,6 +179,75 @@ function switchTab(tab: 'analysis' | 'details' | 'mastery') {
 function openStudentFromDetails(id: string) {
   activeTab.value = 'analysis'
   void openStudent(id)
+}
+
+function assignmentScore(row: any, assignment: { id: string; name: string }) {
+  if (row.assignment_scores && Object.prototype.hasOwnProperty.call(row.assignment_scores, assignment.id)) {
+    return row.assignment_scores[assignment.id]
+  }
+  return row.scores?.[assignment.name] ?? null
+}
+
+const gradeEditorScoresValid = computed(() => Boolean(
+  gradeReport.value?.items.length
+  && gradeReport.value.items.every((item) => item.score !== null && Number.isFinite(Number(item.score)) && Number(item.score) >= 0 && Number(item.score) <= 100),
+))
+const gradeEditorTotal = computed(() => {
+  const items = gradeReport.value?.items ?? []
+  const validScores = items.length > 0 && items.every((item) =>
+    item.score !== null && Number.isFinite(Number(item.score)) && Number(item.score) >= 0 && Number(item.score) <= 100,
+  )
+  const validWeights = items.length > 0 && items.every((item) =>
+    item.max_score !== null && Number.isFinite(Number(item.max_score)) && Number(item.max_score) >= 0,
+  )
+  const maxTotal = validWeights ? items.reduce((sum, item) => sum + Number(item.max_score), 0) : 0
+  const weighted = validWeights && maxTotal > 0
+  if (!validScores) {
+    return { score: null, max: weighted ? maxTotal : 100, calculation: weighted ? 'weighted' : 'percentage_average' as const }
+  }
+  if (weighted) {
+    const score = items.reduce((sum, item) => sum + Number(item.score) / 100 * Number(item.max_score), 0)
+    return { score: Math.round(score * 100) / 100, max: Math.round(maxTotal * 100) / 100, calculation: 'weighted' as const }
+  }
+  const average = items.reduce((sum, item) => sum + Number(item.score), 0) / items.length
+  return { score: Math.round(average * 100) / 100, max: 100, calculation: 'percentage_average' as const }
+})
+
+async function openGradeEditor(row: { username: string; name: string }, assignment: { id: string; name: string }) {
+  gradeEditorStudent.value = row
+  gradeReport.value = null
+  gradeEditorError.value = ''
+  gradeEditorOpen.value = true
+  gradeEditorLoading.value = true
+  try {
+    gradeReport.value = (await fetchTeacherAssignmentStudentGrades(assignment.id, row.username)).grade_report
+  } catch (cause) {
+    gradeEditorError.value = cause instanceof Error ? cause.message : '逐题成绩加载失败。'
+  } finally {
+    gradeEditorLoading.value = false
+  }
+}
+
+async function saveGradeEdits() {
+  const report = gradeReport.value
+  if (!report) return
+  gradeEditorSaving.value = true
+  gradeEditorError.value = ''
+  try {
+    const grades = report.items.map((item) => ({ position: item.position, score: Number(item.score) }))
+    const result = await saveTeacherAssignmentStudentGrades(report.assignment_id, report.student_username, grades)
+    gradeReport.value = result.grade_report
+    gradeEditorOpen.value = false
+    try {
+      data.value = await fetchClassAnalytics(classId.value.trim() || 'all', detailsPage.value, detailsPageSize)
+    } catch {
+      error.value = '逐题成绩已保存，但列表刷新失败，请刷新页面查看最新成绩。'
+    }
+  } catch (cause) {
+    gradeEditorError.value = cause instanceof Error ? cause.message : '逐题成绩保存失败。'
+  } finally {
+    gradeEditorSaving.value = false
+  }
 }
 
 function masteryKey(node: Pick<ClassMasteryNode, 'node_type' | 'node_id'>) {
@@ -404,12 +479,62 @@ if (route.query.tab === 'mastery') {
           <div class="section-heading padded-heading"><div><h3>作业详情</h3><p>查看各学生在所有作业和测试中的具体得分。</p></div></div>
           <div v-if="detailsLoading" class="loading-state table-inline-loading">正在加载第 {{ detailsPage }} 页…</div>
           <div class="data-table class-detail-table">
-            <div class="data-table-head"><span>序号</span><span>学号</span><span>姓名</span><span>班级</span><span v-for="test in data.tests" :key="test.name">{{ test.name }}<small> 得分</small></span></div>
-            <button v-for="(item, index) in data.students" :key="item.id" class="data-table-row" type="button" @click="openStudentFromDetails(item.id)"><span>{{ (detailsPage - 1) * detailsPageSize + index + 1 }}</span><span>{{ item.username }}</span><strong class="teacher-student-name">{{ item.name }}<small v-if="item.is_active === false">已停用</small></strong><span>{{ item.study_class || '未填写' }}</span><span v-for="test in data.tests" :key="test.name">{{ item.scores[test.name] ?? '—' }}</span></button>
+            <div class="data-table-head"><span>序号</span><span>学号</span><span>姓名</span><span>班级</span><span v-for="test in data.tests" :key="test.id">{{ test.name }}<small> 得分</small></span></div>
+            <div v-for="(item, index) in data.students" :key="item.id" class="data-table-row class-detail-student-row">
+              <button class="class-detail-link-cell" type="button" aria-label="查看学生详情" @click="openStudentFromDetails(item.id)">{{ (detailsPage - 1) * detailsPageSize + index + 1 }}</button>
+              <button class="class-detail-link-cell" type="button" @click="openStudentFromDetails(item.id)">{{ item.username }}</button>
+              <button class="class-detail-link-cell teacher-student-name" type="button" @click="openStudentFromDetails(item.id)">{{ item.name }}<small v-if="item.is_active === false">已停用</small></button>
+              <button class="class-detail-link-cell" type="button" @click="openStudentFromDetails(item.id)">{{ item.study_class || '未填写' }}</button>
+              <span v-for="test in data.tests" :key="test.id" class="class-detail-score-cell">
+                <button
+                  v-if="assignmentScore(item, test) !== null"
+                  class="grade-edit-trigger"
+                  type="button"
+                  aria-label="修改该测试的逐题成绩"
+                  title="点击修改该测试的逐题成绩"
+                  @click="openGradeEditor(item, test)"
+                >{{ assignmentScore(item, test) }}</button>
+                <span v-else>—</span>
+              </span>
+            </div>
           </div>
           <div v-if="data.meta.pagination?.total_pages > 1" class="pagination class-detail-pagination"><span>共 {{ data.meta.pagination.total }} 名学生，第 {{ detailsPage }} / {{ data.meta.pagination.total_pages }} 页</span><button class="secondary-button" :disabled="detailsLoading || detailsPage <= 1" type="button" @click="loadDetailsPage(1)">首页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage <= 1" type="button" @click="loadDetailsPage(detailsPage - 1)">上一页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage >= data.meta.pagination.total_pages" type="button" @click="loadDetailsPage(detailsPage + 1)">下一页</button><button class="secondary-button" :disabled="detailsLoading || detailsPage >= data.meta.pagination.total_pages" type="button" @click="loadDetailsPage(data.meta.pagination.total_pages)">末页</button></div>
         </section>
       </template>
     </template>
+    <div v-if="gradeEditorOpen" class="modal-backdrop grade-editor-backdrop" @click.self="!gradeEditorSaving && (gradeEditorOpen = false)">
+      <section class="modal-card grade-editor-card" role="dialog" aria-modal="true" aria-labelledby="grade-editor-title">
+        <div class="section-heading">
+          <div>
+            <h3 id="grade-editor-title">修改逐题成绩</h3>
+            <p v-if="gradeReport && gradeEditorStudent">{{ gradeEditorStudent.name }}（{{ gradeReport.student_username }}）· {{ gradeReport.assignment_title }}</p>
+          </div>
+          <button class="icon-button" type="button" aria-label="关闭" :disabled="gradeEditorSaving" @click="gradeEditorOpen = false">×</button>
+        </div>
+        <div v-if="gradeEditorLoading" class="loading-state">正在加载逐题判卷结果…</div>
+        <div v-else-if="gradeReport" class="grade-editor-content">
+          <p class="grade-editor-hint">每题按百分制填写（0–100）；保存后会更新本次提交的逐题成绩。<template v-if="gradeReport.submission_mode === 'makeup'">本记录为补交。</template></p>
+          <div class="grade-editor-list">
+            <div class="grade-editor-header"><span>题号</span><span>题目</span><span>逐题得分</span><span>题目分值</span></div>
+            <label v-for="grade in gradeReport.items" :key="grade.position" class="grade-editor-row">
+              <span>{{ grade.position + 1 }}</span>
+              <strong :title="grade.title">{{ grade.title }}</strong>
+              <span class="grade-editor-input-wrap"><input v-model.number="grade.score" type="number" min="0" max="100" step="0.01" /><span>%</span></span>
+              <span><template v-if="grade.max_score === null">未设置</template><template v-else>{{ grade.max_score }} 分</template></span>
+            </label>
+          </div>
+          <p v-if="gradeEditorError" class="alert-settings-error">{{ gradeEditorError }}</p>
+          <p class="grade-editor-current-total">
+            {{ gradeEditorTotal.calculation === 'weighted' ? '按题目分值加权总分' : '百分制平均分（题目分值未完整设置）' }}：
+            {{ gradeEditorTotal.score ?? '—' }} / {{ gradeEditorTotal.max }} 分
+          </p>
+        </div>
+        <p v-else-if="gradeEditorError" class="alert-settings-error">{{ gradeEditorError }}</p>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" :disabled="gradeEditorLoading || gradeEditorSaving" @click="gradeEditorOpen = false">取消</button>
+          <button type="button" :disabled="gradeEditorLoading || gradeEditorSaving || !gradeReport || !gradeEditorScoresValid" @click="saveGradeEdits">{{ gradeEditorSaving ? '保存中…' : '保存成绩' }}</button>
+        </div>
+      </section>
+    </div>
   </div>
 </template>

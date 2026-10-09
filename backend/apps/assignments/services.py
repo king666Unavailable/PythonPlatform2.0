@@ -369,10 +369,15 @@ class AssignmentService:
                 for item in items:
                     question = repository.find_by_id(item["question_id"]) if item["question_id"] else None
                     if question:
-                        result.append({"position": item["position"], **question.public_dict(include_solution=include_solution)})
+                        result.append({
+                            "position": item["position"],
+                            "max_score": item.get("score"),
+                            **question.public_dict(include_solution=include_solution),
+                        })
                     else:
                         result.append({
                             "position": item["position"],
+                            "max_score": item.get("score"),
                             "id": f"question:{item['question_id'] or item['question_ref']}",
                             "title": item["question_ref"] or "未命名题目",
                             "type": "未知题型",

@@ -115,7 +115,7 @@ class MySQLStudentProfileRepository:
 
             cursor.execute(
                 """
-                SELECT ai.assignment_id, ai.position,
+                SELECT ai.assignment_id, ai.position, ai.score AS max_score,
                        COALESCE(q.title, ai.question_ref) AS title,
                        COALESCE(q.question_type, '') AS question_type
                 FROM assignment_items ai
@@ -128,6 +128,7 @@ class MySQLStudentProfileRepository:
                 question_meta[str(row["assignment_id"])][int(row["position"])] = {
                     "title": row["title"] or "未命名题目",
                     "question_type": str(row["question_type"] or ""),
+                    "max_score": float(row["max_score"]) if row.get("max_score") is not None else None,
                 }
 
         latest_submissions: dict[str, dict[str, Any]] = {}
@@ -263,6 +264,10 @@ class MySQLStudentProfileRepository:
             grade_items,
             total_questions,
             submission.get("score") if submission_status == "已完成" and submission else None,
+            [
+                {"position": position, "score": metadata.get("max_score")}
+                for position, metadata in question_meta.items()
+            ],
         )
 
         answers = _loads((submission or {}).get("answers_json"), {})

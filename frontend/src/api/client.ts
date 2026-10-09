@@ -4,7 +4,7 @@ import type { KnowledgeGraphResponse } from '@/types/knowledge'
 import type { StudentMasteryResponse } from '@/types/mastery'
 import type { LearningProfileReport } from '@/types/learningProfile'
 import type { Question, QuestionListResponse } from '@/types/question'
-import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, TeacherStudentProfileResponse } from '@/types/teacher'
+import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, TeacherAssignmentGradeReport, TeacherStudentProfileResponse } from '@/types/teacher'
 import type { ClassContextResponse, TeachingClass } from '@/types/classContext'
 import type { NavigationVisibilityItem } from '@/types/navigation'
 
@@ -178,6 +178,23 @@ export function saveClassAlertPreferences(config: ClassAlertRules) {
 
 export function fetchTeacherStudentProfile(studentId: string) {
   return request<TeacherStudentProfileResponse>(`/api/v1/students/${encodeURIComponent(studentId)}/profile`)
+}
+
+export function fetchTeacherAssignmentStudentGrades(assignmentId: string, studentUsername: string) {
+  return request<{ grade_report: TeacherAssignmentGradeReport }>(
+    `/api/v1/teacher/class/assignments/${encodeURIComponent(assignmentId)}/students/${encodeURIComponent(studentUsername)}/grades`,
+  )
+}
+
+export function saveTeacherAssignmentStudentGrades(
+  assignmentId: string,
+  studentUsername: string,
+  grades: Array<{ position: number; score: number }>,
+) {
+  return request<{ grade_report: TeacherAssignmentGradeReport }>(
+    `/api/v1/teacher/class/assignments/${encodeURIComponent(assignmentId)}/students/${encodeURIComponent(studentUsername)}/grades`,
+    { method: 'PUT', body: JSON.stringify({ grades }) },
+  )
 }
 
 export function fetchTeacherClassMastery(nodeType = '', nodeId = '') {

@@ -4,7 +4,7 @@ from django.urls import path
 
 from .class_management_views import classes, create_class, create_student, import_students_confirm, import_students_preview
 from .audit_views import student_operation_logs
-from .views import class_alert_preferences, class_analytics, student_profile
+from .views import assignment_student_grades, class_alert_preferences, class_analytics, student_profile
 
 
 urlpatterns = [
@@ -15,6 +15,11 @@ urlpatterns = [
     path("teacher/classes/import/confirm", import_students_confirm, name="teacher-student-import-confirm"),
     path("teacher/student-operation-logs", student_operation_logs, name="teacher-student-operation-logs"),
     path("classes/<str:class_id>/analytics", class_analytics, name="class-analytics"),
+    path(
+        "teacher/class/assignments/<str:assignment_id>/students/<str:student_username>/grades",
+        assignment_student_grades,
+        name="teacher-assignment-student-grades",
+    ),
     path("teacher/class/alert-preferences", class_alert_preferences, name="teacher-class-alert-preferences"),
     path("students/<str:student_id>/profile", student_profile, name="teacher-student-profile"),
 ]

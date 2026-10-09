@@ -484,6 +484,7 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .answer-main.wrong-question-card { border-color: #e6a4a4; background: #fff4f4; }
 .answer-main-header { align-items: flex-start; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 .question-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.question-max-score { color: var(--color-text-muted); font-size: 0.9rem; font-weight: 600; }
 .question-counter { color: var(--blue); font-size: 14px; font-weight: 700; }
 .question-timer { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
 .answer-main-header h3 { margin-top: 5px; font-size: 23px; }
@@ -816,6 +817,28 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .class-detail-table .data-table-head > :nth-child(1), .class-detail-table .data-table-row > :nth-child(1) { flex-basis: 58px; }
 .class-detail-table .data-table-head > :nth-child(2), .class-detail-table .data-table-row > :nth-child(2), .class-detail-table .data-table-head > :nth-child(3), .class-detail-table .data-table-row > :nth-child(3), .class-detail-table .data-table-head > :nth-child(4), .class-detail-table .data-table-row > :nth-child(4) { flex-basis: 150px; }
 .class-detail-table .data-table-head > :first-child, .class-detail-table .data-table-row > :first-child { color: var(--muted); text-align: center; }
+.class-detail-student-row { padding: 0 26px; }
+.class-detail-link-cell { align-self: stretch; min-height: 72px; padding: 14px 0; border: 0; color: #526173; background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.class-detail-table .data-table-row:hover { background: white; }
+.class-detail-link-cell:hover { color: #526173; background: transparent; text-decoration: none; }
+.class-detail-student-row > :first-child { text-align: center; }
+.class-detail-score-cell { display: flex; min-height: 72px; align-items: center; }
+.grade-edit-trigger { padding: 5px 8px; border: 1px solid transparent; border-radius: 7px; color: var(--primary); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.grade-edit-trigger:hover { border-color: #cfe0f6; background: #f2f7ff; }
+.modal-card.grade-editor-card { width: min(90vw, 920px); max-height: calc(100vh - 40px); overflow: hidden; }
+.grade-editor-content { display: grid; min-height: 0; gap: 12px; }
+.grade-editor-hint, .grade-editor-current-total { margin: 0; color: var(--muted); }
+.grade-editor-current-total { justify-self: end; color: var(--ink); font-weight: 700; }
+.grade-editor-list { max-height: min(58vh, 620px); overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+.grade-editor-header, .grade-editor-row { display: grid; grid-template-columns: 64px 240px 240px 130px; align-items: center; column-gap: 30px; padding: 11px 18px; }
+.grade-editor-header { position: sticky; top: 0; z-index: 1; color: var(--muted); background: #f7f9fc; font-size: 13px; font-weight: 700; }
+.grade-editor-row { min-height: 56px; border-top: 1px solid #edf1f6; color: #526173; }
+.grade-editor-row strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; white-space: nowrap; }
+.grade-editor-input-wrap { display: flex; align-items: center; gap: 9px; }
+.grade-editor-row input { width: 100%; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; }
+.grade-editor-input-wrap input { flex: 0 0 96px; width: 96px; }
+.grade-editor-input-wrap > span { color: var(--muted); font-weight: 700; }
+.grade-editor-backdrop { z-index: 30; }
 .class-detail-pagination { flex-wrap: wrap; justify-content: flex-end; }
 .class-detail-pagination > span { margin-right: auto; }
 .table-inline-loading { padding: 12px 20px; text-align: right; }
@@ -1125,6 +1148,9 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 }
 
 @media (max-width: 540px) {
+  .grade-editor-card { max-height: calc(100vh - 20px); padding: 16px; }
+  .grade-editor-list { overflow-x: auto; }
+  .grade-editor-header, .grade-editor-row { min-width: 1026px; }
   .topbar h1 { font-size: 23px; }
   .content-area { padding: 22px 16px 42px; }
   .page-header h2 { font-size: 24px; }

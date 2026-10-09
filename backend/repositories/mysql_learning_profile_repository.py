@@ -186,7 +186,8 @@ class MySQLLearningProfileRepository:
             return {}
         placeholders = ",".join(["%s"] * len(assignment_ids))
         cursor.execute(
-            f"""SELECT ai.assignment_id, ai.position, COALESCE(q.title, ai.question_ref) AS title,
+            f"""SELECT ai.assignment_id, ai.position, ai.score AS max_score,
+                       COALESCE(q.title, ai.question_ref) AS title,
                        COALESCE(q.question_type,'') AS question_type, q.difficulty
                 FROM assignment_items ai LEFT JOIN graph_questions q ON q.id=ai.question_id
                 WHERE ai.assignment_id IN ({placeholders}) ORDER BY ai.assignment_id, ai.position""",
@@ -198,6 +199,7 @@ class MySQLLearningProfileRepository:
                 "title": row["title"] or "未命名题目",
                 "question_type": str(row["question_type"] or ""),
                 "difficulty": _number(row.get("difficulty")),
+                "max_score": float(row["max_score"]) if row.get("max_score") is not None else None,
             }
         return result
 
@@ -280,6 +282,10 @@ class MySQLLearningProfileRepository:
                 items,
                 len(question_meta.get(aid, {})),
                 submission.get("score") if submission and submission.get("status") == "graded" else None,
+                [
+                    {"position": position, "score": metadata.get("max_score")}
+                    for position, metadata in question_meta.get(aid, {}).items()
+                ],
             )
             records.append({
                 "assignment_id": aid,
@@ -329,6 +335,10 @@ class MySQLLearningProfileRepository:
                         items,
                         len(question_meta.get(aid, {})),
                         submission.get("score") if submission and submission.get("status") == "graded" else None,
+                        [
+                            {"position": position, "score": metadata.get("max_score")}
+                            for position, metadata in question_meta.get(aid, {}).items()
+                        ],
                     ),
                 })
         return result
