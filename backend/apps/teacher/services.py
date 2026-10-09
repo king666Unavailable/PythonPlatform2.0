@@ -136,10 +136,17 @@ class TeacherAnalyticsService:
             for assignment in assignments
             if TeacherAnalyticsService._assignment_visible_to_student(assignment, student.username)
         ]
-        for assignment in visible_assignments:
+        visible_assignment_ids = {str(assignment["id"]) for assignment in visible_assignments}
+        visible_assignment_results: list[dict] = []
+        for assignment in assignments:
             assignment_id = str(assignment["id"])
             submission = latest.get((student.username, assignment_id))
-            if submission is not None:
+            is_visible = assignment_id in visible_assignment_ids
+            # Open scope controls whether a missing submission counts against the
+            # student, but it must not hide a score already recorded for them.
+            if not is_visible and submission is None:
+                continue
+            if is_visible and submission is not None:
                 submitted += 1
             value = _score(
                 submission,
@@ -153,16 +160,17 @@ class TeacherAnalyticsService:
                 evaluated.append(float(value))
             title = str(assignment["title"])
             failed = value is not None and float(value) < 60
-            assignment_results.append(
-                {
-                    "id": assignment_id,
-                    "title": title,
-                    "score": value,
-                    "submitted": submission is not None,
-                    "failed": failed,
-                }
-            )
-            if submission is None:
+            result = {
+                "id": assignment_id,
+                "title": title,
+                "score": value,
+                "submitted": submission is not None,
+                "failed": failed,
+            }
+            assignment_results.append(result)
+            if is_visible:
+                visible_assignment_results.append(result)
+            if is_visible and submission is None:
                 unsubmitted_assignments.append(title)
             elif failed:
                 failed_assignments.append(title)
@@ -173,7 +181,7 @@ class TeacherAnalyticsService:
         low_score_count = sum(value < 60 for value in evaluated)
         full_score_count = sum(value >= 100 for value in evaluated)
         consecutive_unsubmitted = 0
-        for item in assignment_results:
+        for item in visible_assignment_results:
             if item["submitted"]:
                 break
             consecutive_unsubmitted += 1
