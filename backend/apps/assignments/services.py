@@ -9,7 +9,7 @@ from typing import Any
 
 from django.utils import timezone
 
-from domain.assignment_rules import is_assignment_visible_to_student
+from domain.assignment_rules import is_assignment_visible_to_student, normalize_open_state
 from repositories.learning_repository import LearningRepository
 from repositories.question_repository import QuestionQuery
 from repositories.mysql_question_repository import MySQLQuestionRepository
@@ -263,8 +263,8 @@ class AssignmentService:
             raise ValueError("makeup deadline is required")
         targets = data.get("target_usernames", data.get("open_usernames", []))
         targets = self._validate_targets(targets, effective_class_id)
-        open_state = str(data.get("open_state", "yes"))
-        if open_state in {"some", "targeted", "specific"} and not targets:
+        open_state = normalize_open_state(data.get("open_state", "yes"))
+        if open_state == "some" and not targets:
             raise ValueError("target_usernames is required when open_state is some")
         raw_kind = data.get("assignment_kind")
         window_kind = None if raw_kind is None or not str(raw_kind).strip() else normalize_assignment_kind(raw_kind)
@@ -297,8 +297,8 @@ class AssignmentService:
             raise ValueError("makeup deadline is required")
         targets = data.get("target_usernames", data.get("open_usernames", []))
         targets = self._validate_targets(targets, effective_class_id)
-        open_state = str(data.get("open_state", current.get("open_state", "yes")))
-        if open_state in {"some", "targeted", "specific"} and not targets:
+        open_state = normalize_open_state(data.get("open_state", current.get("open_state", "yes")))
+        if open_state == "some" and not targets:
             raise ValueError("target_usernames is required when open_state is some")
         raw_kind = data.get("assignment_kind", current.get("assignment_kind"))
         window_kind = None if raw_kind is None or not str(raw_kind).strip() else normalize_assignment_kind(raw_kind)
@@ -340,7 +340,7 @@ class AssignmentService:
             "title": title,
             "deadline": normalize_deadline(data.get("deadline", "")),
             "time_limit": int(data.get("time_limit", data.get("timelimit", 0)) or 0),
-            "open_state": str(data.get("open_state", "yes")),
+            "open_state": normalize_open_state(data.get("open_state", "yes")),
             "target_usernames": targets,
             "assignment_kind": assignment_kind,
             "is_makeup": bool(data.get("is_makeup", False)),
@@ -370,6 +370,9 @@ class AssignmentService:
             updated.get("target_usernames", updated.get("open_usernames", [])),
             stored.get("class_id") or class_id,
         )
+        updated["open_state"] = normalize_open_state(updated.get("open_state", "yes"))
+        if updated["open_state"] == "some" and not updated["target_usernames"]:
+            raise ValueError("target_usernames is required when open_state is some")
         updated["assignment_kind"] = normalize_assignment_kind(updated.get("assignment_kind"), allow_mock=False)
         if "deadline" in updated:
             updated["deadline"] = normalize_deadline(updated.get("deadline", ""))
@@ -444,10 +447,13 @@ class AssignmentService:
     def _is_window_available(window: dict[str, Any], username: str) -> bool:
         if not window.get("is_active"):
             return False
-        state = str(window.get("open_state", "yes")).lower()
+        try:
+            state = normalize_open_state(window.get("open_state", "yes"))
+        except ValueError:
+            return False
         if state == "no":
             return False
-        if state in {"some", "targeted", "specific"}:
+        if state == "some":
             targets = window.get("target_usernames", [])
             deadline = parse_deadline(str(window.get("deadline", "")))
             return username in {str(target).strip() for target in targets if str(target).strip()} and bool(deadline and deadline >= timezone.now())

@@ -151,9 +151,11 @@ function assignmentSettings(detail: Record<string, unknown>) {
     const state = text(detail.open_state).toLowerCase()
     const scope = state === 'no'
       ? '暂不开放'
-      : ['some', 'targeted', 'specific'].includes(state)
+      : state === 'some'
         ? `指定学生（${countOf(detail.target_usernames)} 人）`
-        : '全部学生'
+        : state === 'yes'
+          ? '全部学生'
+          : `未知开放范围（${state || '空值'}）`
     settings.push(`开放范围：${scope}`)
   }
   if ('allow_answer_view' in detail || 'allow_view_answers' in detail) {

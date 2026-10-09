@@ -27,7 +27,7 @@ const sortedWindows = computed(() => [...windows.value].sort((a, b) => String(b.
 function toIso(value: string) { return toApiDateTime(value) }
 function parseTargets(value: string) { return [...new Set(value.replaceAll('，', ',').replaceAll('\n', ',').split(',').map((item) => item.trim()).filter(Boolean))] }
 function kindLabel(value: unknown) { return ({ offline: '线下测试', classwork: '课堂测试', homework: '课后作业', exam: '考试' } as Record<string, string>)[String(value)] ?? '未设置' }
-function scopeLabel(item: MakeupWindow) { const state = String(item.open_state ?? 'yes'); if (state === 'yes') return '全部学生'; if (state === 'no') return '暂不开放'; const targets = Array.isArray(item.target_usernames) ? item.target_usernames.map(String) : []; return targets.length ? `指定学生：${targets.join('、')}` : '指定学生（名单为空）' }
+function scopeLabel(item: MakeupWindow) { const state = String(item.open_state ?? 'yes'); if (state === 'yes') return '全部学生'; if (state === 'no') return '暂不开放'; if (state !== 'some') return `未知开放范围（${state}）`; const targets = Array.isArray(item.target_usernames) ? item.target_usernames.map(String) : []; return targets.length ? `指定学生：${targets.join('、')}` : '指定学生（名单为空）' }
 function scopeTone(item: MakeupWindow): 'green' | 'orange' | 'red' { const state = String(item.open_state ?? 'yes'); return state === 'yes' ? 'green' : state === 'some' ? 'orange' : 'red' }
 function activeLabel(item: MakeupWindow) { return item.is_active ? '开放中' : '未开放' }
 function resetForm() { editingId.value = ''; form.deadline = ''; form.timeLimit = 0; form.kind = 'homework'; form.openState = 'yes'; form.targets = ''; editorError.value = ''; editorOpen.value = true }
