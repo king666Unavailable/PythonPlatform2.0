@@ -320,6 +320,7 @@ button:hover, .button-link:hover { background: #245da9; }
 .student-assignment-table .assignment-table-head { font-size: 16px; }
 .student-assignment-table .assignment-title-cell strong { font-size: 18px; }
 .student-assignment-table .assignment-title-cell small { font-size: 15px; }
+.student-assignment-table .submission-source-badge { margin-left: 7px; font-size: 11px; }
 .student-assignment-table .assignment-deadline-cell { color: #35445a; font-size: 15px; }
 .student-assignment-table .assignment-time-cell { color: #35445a; font-size: 15px; }
 .student-assignment-table .assignment-status-cell { min-height: 34px; padding: 5px 12px; font-size: 16px; }
@@ -478,6 +479,7 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .question-number-grid button.wrong { border-color: #e05252; color: #b42318; background: #ffe1e1; }
 .question-number-grid button.current.wrong { border-color: #b42318; color: white; background: #d92d20; }
 .assignment-side-info { display: grid; gap: 5px; margin-top: 25px; padding-top: 18px; border-top: 1px solid var(--line); }
+.assignment-side-title { margin: 0 0 8px; color: var(--ink); font-size: 17px; line-height: 1.4; overflow-wrap: anywhere; }
 .assignment-side-info span { color: var(--muted); font-size: 14px; }
 .assignment-side-info strong { margin-bottom: 8px; color: var(--ink); font-size: 15px; }
 .answer-main { min-height: 640px; }
@@ -764,12 +766,15 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .student-assignment-result.failed { border-color: #efb9be; background: #fff3f3; }
 .student-assignment-result.pending { background: #f7f9fc; }
 .student-assignment-result-main { display: grid; min-width: 0; gap: 3px; }
-.student-assignment-result-main strong { overflow: hidden; color: var(--ink); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.student-assignment-result-title { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.student-assignment-result-title strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .student-assignment-result-main span { color: var(--blue); font-size: 14px; font-weight: 700; }
 .student-assignment-result.failed .student-assignment-result-main span { color: var(--red); }
 .student-assignment-result.pending .student-assignment-result-main span { color: var(--muted); font-weight: 500; }
 .student-result-badge { flex: 0 0 auto; padding: 4px 8px; border-radius: 6px; color: var(--red); background: #ffdfe1; font-size: 13px; font-weight: 700; }
 .student-result-badge.pending-badge { color: #667085; background: #e9edf3; }
+.submission-source-badge { display: inline-flex; width: fit-content; flex: 0 0 auto; align-items: center; padding: 2px 7px; border-radius: 999px; color: #245da9; background: #eaf2ff; font-size: 11px; font-weight: 700; line-height: 1.45; white-space: nowrap; }
+.submission-source-badge.makeup { color: #8a4b00; background: #fff0d7; }
 .student-risk-empty { color: var(--muted); font-size: 15px; }
 .data-table { overflow-x: auto; }
 .data-table-head, .data-table-row { min-width: 640px; }
@@ -822,7 +827,7 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .class-detail-table .data-table-row:hover { background: white; }
 .class-detail-link-cell:hover { color: #526173; background: transparent; text-decoration: none; }
 .class-detail-student-row > :first-child { text-align: center; }
-.class-detail-score-cell { display: flex; min-height: 72px; align-items: center; }
+.class-detail-score-cell { display: flex; min-height: 72px; align-items: center; gap: 5px; }
 .grade-edit-trigger { padding: 5px 8px; border: 1px solid transparent; border-radius: 7px; color: var(--primary); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
 .grade-edit-trigger:hover { border-color: #cfe0f6; background: #f2f7ff; }
 .modal-card.grade-editor-card { width: min(90vw, 920px); max-height: calc(100vh - 40px); overflow: hidden; }

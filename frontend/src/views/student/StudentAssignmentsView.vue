@@ -24,6 +24,11 @@ function timeLimitLabel(value: unknown) {
   return Number.isFinite(minutes) && minutes > 0 ? `${minutes} 分钟` : '不限时'
 }
 
+function submittedModeLabel(item: Record<string, unknown>) {
+  if (!item.submission_id || !['已完成', '判卷中'].includes(String(item.status))) return ''
+  return item.submission_mode === 'makeup' ? '补交' : ''
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -43,7 +48,7 @@ onMounted(() => void load())
       <div v-if="filtered.length" class="assignment-table student-assignment-table">
         <div class="assignment-table-head"><span>作业</span><span>截止时间</span><span>答题时长</span><span>状态</span><span>操作</span></div>
         <article v-for="item in filtered" :key="String(item.id)" class="assignment-table-row">
-          <div class="assignment-title-cell"><strong>{{ item.title }}</strong><small>{{ assignmentKindLabel(item.assignment_kind) }}<em v-if="item.can_makeup"> · 补交开放</em></small></div>
+          <div class="assignment-title-cell"><strong>{{ item.title }}</strong><small>{{ assignmentKindLabel(item.assignment_kind) }}<span v-if="submittedModeLabel(item)" class="submission-source-badge" :class="{ makeup: item.submission_mode === 'makeup' }">{{ submittedModeLabel(item) }}</span><em v-if="item.can_makeup"> · 补交开放</em></small></div>
           <span class="assignment-deadline-cell">{{ shortDate(item.deadline) }}</span>
           <span class="assignment-time-cell">{{ timeLimitLabel(item.time_limit) }}</span>
           <StatusBadge class="assignment-status-cell" :label="String(item.status)" :tone="statusTone(String(item.status))" />

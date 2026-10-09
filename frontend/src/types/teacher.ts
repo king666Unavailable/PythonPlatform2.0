@@ -13,12 +13,14 @@ export interface TeacherClassStudent {
     title: string
     score: number | null
     submitted: boolean
+    submission_mode?: 'normal' | 'makeup' | null
     failed: boolean
   }>
   unsubmitted_assignments: string[]
   failed_assignments: string[]
   scores: Record<string, number>
   assignment_scores: Record<string, number | null>
+  assignment_submission_modes?: Record<string, 'normal' | 'makeup'>
   needs_attention: boolean
   excellent: boolean
 }

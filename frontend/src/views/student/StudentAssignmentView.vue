@@ -39,7 +39,7 @@ interface AssignmentDetail {
   can_view_answers?: boolean
   answer_view_message?: string
   draft?: { answers?: Record<string, unknown> | unknown[]; time_spent?: Record<string, unknown> }
-  submission?: { answers?: Record<string, unknown> | unknown[]; time_spent?: Record<string, unknown>; score?: number | null; status?: string; grades?: Array<Record<string, unknown>> }
+  submission?: { answers?: Record<string, unknown> | unknown[]; time_spent?: Record<string, unknown>; score?: number | null; status?: string; submission_mode?: 'normal' | 'makeup'; grades?: Array<Record<string, unknown>> }
 }
 
 const route = useRoute()
@@ -340,7 +340,7 @@ onBeforeUnmount(() => {
         <div class="question-number-grid">
           <button v-for="(question, index) in assignment.questions" :key="question.id" type="button" :class="{ current: index === activeIndex, answered: answerFor(question).trim(), wrong: isWrong(question) }" @click="activeIndex = index">{{ index + 1 }}</button>
         </div>
-        <div class="assignment-side-info"><template v-if="assignment.submission_mode === 'makeup'"><span>提交方式</span><strong>补交</strong></template><span>截止时间</span><strong>{{ formatDate(assignment.deadline, '不限') }}</strong><span>限时</span><strong>{{ assignment.time_limit ? `${assignment.time_limit} 分钟` : '不限时' }}</strong></div>
+        <div class="assignment-side-info"><h3 class="assignment-side-title">{{ assignment.title }}</h3><template v-if="assignment.submission_mode === 'makeup' || assignment.submission?.submission_mode === 'makeup'"><span>提交方式</span><strong>补交</strong></template><span>截止时间</span><strong>{{ formatDate(assignment.deadline, '不限') }}</strong><span>限时</span><strong>{{ assignment.time_limit ? `${assignment.time_limit} 分钟` : '不限时' }}</strong></div>
         <div v-if="viewMode === 'result'" class="assignment-score"><span>本次得分</span><strong>{{ assignment.submission?.score ?? '待更新' }}<small v-if="assignment.submission?.score !== null && assignment.submission?.score !== undefined"> 分</small></strong></div>
       </aside>
       <section class="answer-main content-card" :class="{ 'wrong-question-card': isWrong(currentQuestion) }">

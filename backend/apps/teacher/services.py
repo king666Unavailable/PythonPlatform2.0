@@ -126,6 +126,7 @@ class TeacherAnalyticsService:
     ) -> dict:
         scores: dict[str, int | float | None] = {}
         assignment_scores: dict[str, int | float | None] = {}
+        assignment_submission_modes: dict[str, str] = {}
         evaluated: list[float] = []
         submitted = 0
         unsubmitted_assignments: list[str] = []
@@ -156,6 +157,10 @@ class TeacherAnalyticsService:
             )
             scores[str(assignment["title"])] = value
             assignment_scores[assignment_id] = value
+            if submission is not None:
+                assignment_submission_modes[assignment_id] = str(
+                    submission.get("submission_mode") or "normal"
+                )
             if value is not None:
                 evaluated.append(float(value))
             title = str(assignment["title"])
@@ -165,6 +170,7 @@ class TeacherAnalyticsService:
                 "title": title,
                 "score": value,
                 "submitted": submission is not None,
+                "submission_mode": str(submission.get("submission_mode") or "normal") if submission else None,
                 "failed": failed,
             }
             assignment_results.append(result)
@@ -202,6 +208,7 @@ class TeacherAnalyticsService:
             "is_active": student.is_active,
             "scores": scores,
             "assignment_scores": assignment_scores,
+            "assignment_submission_modes": assignment_submission_modes,
             "assignment_results": assignment_results,
             "unsubmitted_assignments": unsubmitted_assignments,
             "failed_assignments": failed_assignments,

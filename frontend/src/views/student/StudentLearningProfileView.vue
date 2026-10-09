@@ -107,11 +107,11 @@ onMounted(() => void load())
       </section>
 
       <section class="content-card learning-profile-overview">
-        <div class="section-heading"><div><h3>三维画像总览</h3><p>基于当前教学班的真实作业、答题、掌握度和学习用时数据</p></div><span class="learning-profile-overall">综合评分：<strong>{{ score(report.overview.overall_score) }}</strong></span></div>
+        <div class="section-heading"><div><h3>学情画像总览</h3><p>基于当前教学班的真实作业、答题、掌握度和学习用时数据</p></div><span class="learning-profile-overall">综合评分：<strong>{{ score(report.overview.overall_score) }}</strong></span></div>
         <div class="learning-profile-overview-grid">
           <div class="learning-profile-radar-wrap">
             <div class="learning-profile-legend"><span><i class="profile-dot student" />当前表现</span><span><i class="profile-dot average" />班级平均</span><span><i class="profile-dot reference" />参考线 80 分</span></div>
-            <svg class="learning-profile-radar" viewBox="0 0 300 300" role="img" aria-label="学情画像三维雷达图">
+            <svg class="learning-profile-radar" viewBox="0 0 300 300" role="img" aria-label="学情画像雷达图">
               <polygon v-for="level in [20, 40, 60, 80, 100]" :key="level" :points="radarGrid(level)" class="profile-radar-grid" />
               <line x1="150" y1="46" x2="150" y2="254" class="profile-radar-axis" /><line x1="59.9" y1="202" x2="240.1" y2="202" class="profile-radar-axis" /><line x1="240.1" y1="202" x2="59.9" y2="202" class="profile-radar-axis" />
               <polygon :points="radarPoints([80, 80, 80])" class="profile-radar-reference" /><polygon :points="radarPoints(classValues)" class="profile-radar-average" /><polygon :points="radarPoints(dimensionValues)" class="profile-radar-student" />

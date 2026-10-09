@@ -188,6 +188,10 @@ function assignmentScore(row: any, assignment: { id: string; name: string }) {
   return row.scores?.[assignment.name] ?? null
 }
 
+function assignmentSubmissionMode(row: any, assignment: { id: string }) {
+  return row.assignment_submission_modes?.[assignment.id] ?? null
+}
+
 const gradeEditorScoresValid = computed(() => Boolean(
   gradeReport.value?.items.length
   && gradeReport.value.items.every((item) => item.score !== null && Number.isFinite(Number(item.score)) && Number(item.score) >= 0 && Number(item.score) <= 100),
@@ -405,7 +409,7 @@ if (route.query.tab === 'mastery') {
             <div v-if="student.student.assignment_results.length" class="student-assignment-result-list">
               <article v-for="item in student.student.assignment_results" :key="item.id" class="student-assignment-result" :class="{ failed: item.failed, pending: !item.submitted }">
                 <div class="student-assignment-result-main">
-                  <strong>{{ item.title }}</strong>
+                  <div class="student-assignment-result-title"><strong>{{ item.title }}</strong><small v-if="item.submitted && item.submission_mode === 'makeup'" class="submission-source-badge makeup">补交</small></div>
                   <span>{{ item.submitted ? (item.score ?? '待判卷') : '未提交' }}</span>
                 </div>
                 <span v-if="item.failed" class="student-result-badge">不及格</span>
@@ -495,6 +499,7 @@ if (route.query.tab === 'mastery') {
                   @click="openGradeEditor(item, test)"
                 >{{ assignmentScore(item, test) }}</button>
                 <span v-else>—</span>
+                <small v-if="assignmentSubmissionMode(item, test) === 'makeup'" class="submission-source-badge makeup">补交</small>
               </span>
             </div>
           </div>

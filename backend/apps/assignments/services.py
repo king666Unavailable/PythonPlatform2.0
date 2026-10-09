@@ -90,13 +90,31 @@ class AssignmentService:
             normal_overdue = self._is_overdue(item)
             can_makeup = bool(active_window and normal_overdue and not normal_final)
             use_makeup = bool(active_window and normal_overdue and not normal_final)
-            submission = makeup_submission if use_makeup and makeup_submission else normal_submission
-            if submission is None and use_makeup:
+            makeup_final = bool(makeup_submission and makeup_submission.get("status") != "draft")
+            if normal_final:
+                submission = normal_submission
+            elif makeup_final:
+                # Keep a completed makeup attempt visible after its window closes.
                 submission = makeup_submission
-            available = normal_available or bool(active_window)
+            elif use_makeup:
+                submission = makeup_submission
+            else:
+                submission = normal_submission or makeup_submission
+            has_final_submission = bool(submission and submission.get("status") != "draft")
+            available = normal_available or bool(active_window) or has_final_submission
             if not available:
                 continue
-            effective_deadline = active_window["deadline"] if use_makeup and active_window else item["deadline"]
+            selected_window = active_window if use_makeup else None
+            if submission and submission.get("submission_mode") == "makeup":
+                selected_window = next(
+                    (
+                        window
+                        for window in windows_by_assignment.get(item["id"], [])
+                        if str(window["id"]) == str(submission.get("makeup_window_id"))
+                    ),
+                    selected_window,
+                )
+            effective_deadline = selected_window["deadline"] if selected_window else item["deadline"]
             status = "进行中"
             if submission:
                 status = {"grading": "判卷中", "graded": "已完成", "grading_unavailable": "判卷中"}.get(
@@ -114,7 +132,7 @@ class AssignmentService:
                     "submission_id": submission["id"] if submission else None,
                     "score": submission["score"] if submission else None,
                     "submission_mode": submission.get("submission_mode", "normal") if submission else ("makeup" if use_makeup else "normal"),
-                    "makeup_window_id": active_window["id"] if active_window and use_makeup else None,
+                    "makeup_window_id": (submission.get("makeup_window_id") if submission else None) or (selected_window["id"] if selected_window else None),
                     "can_makeup": can_makeup,
                     "makeup_deadline": active_window["deadline"] if active_window else "",
                     "effective_deadline": effective_deadline,
@@ -146,12 +164,33 @@ class AssignmentService:
             if not requested_window or not self._is_window_available(requested_window, username):
                 raise PermissionError("makeup window is not open")
         normal_available = self._is_available(assignment, username)
-        if not normal_available and not active_window and not requested_window:
+        has_final_submission = bool(
+            (normal_submission and normal_submission.get("status") != "draft")
+            or (makeup_submission and makeup_submission.get("status") != "draft")
+        )
+        if not normal_available and not active_window and not requested_window and not has_final_submission:
             raise PermissionError("assignment is not open")
         normal_final = bool(normal_submission and normal_submission.get("status") != "draft")
         use_makeup = bool(requested_window or (active_window and self._is_overdue(assignment) and not normal_final))
         selected_window = requested_window or (active_window if use_makeup else None)
-        latest_submission = makeup_submission if use_makeup else normal_submission
+        makeup_final = bool(makeup_submission and makeup_submission.get("status") != "draft")
+        if requested_window or (use_makeup and makeup_submission):
+            latest_submission = makeup_submission
+        elif normal_final:
+            latest_submission = normal_submission
+        elif makeup_final:
+            # A past makeup remains the actual result even when the window is no longer active.
+            latest_submission = makeup_submission
+            use_makeup = True
+        elif use_makeup:
+            latest_submission = makeup_submission
+        else:
+            latest_submission = normal_submission or makeup_submission
+        if latest_submission and latest_submission.get("submission_mode") == "makeup" and selected_window is None:
+            selected_window = next(
+                (window for window in makeup_windows if str(window["id"]) == str(latest_submission.get("makeup_window_id"))),
+                None,
+            )
         if latest_submission:
             latest_submission = next(
                 (item for item in submissions if item["id"] == latest_submission["id"]), latest_submission
@@ -182,8 +221,8 @@ class AssignmentService:
         return {
             **student_assignment,
             "questions": questions,
-            "submission_mode": "makeup" if use_makeup else "normal",
-            "makeup_window_id": selected_window["id"] if selected_window else None,
+            "submission_mode": str(latest_submission.get("submission_mode") or ("makeup" if use_makeup else "normal")) if latest_submission else ("makeup" if use_makeup else "normal"),
+            "makeup_window_id": (latest_submission.get("makeup_window_id") if latest_submission else None) or (selected_window["id"] if selected_window else None),
             "makeup_window": selected_window,
             "can_makeup": bool(active_window and self._is_overdue(assignment) and not normal_final),
             "view_mode": view_mode,

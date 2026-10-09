@@ -362,7 +362,8 @@ class MySQLClassAnalyticsRepository:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""
-                SELECT id, assignment_id, student_username, attempt_no, status, score, updated_at
+                SELECT id, assignment_id, student_username, attempt_no, status, score,
+                       submission_mode, makeup_window_id, updated_at
                 FROM submissions
                 WHERE student_username IN ({user_placeholders})
                   AND assignment_id IN ({assignment_placeholders})
