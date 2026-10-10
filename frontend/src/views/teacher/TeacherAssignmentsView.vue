@@ -56,7 +56,7 @@ onMounted(() => void load())
 
 <template>
   <div class="page-stack">
-    <PageHeader title="作业管理"><template #actions><button type="button" @click="showCreator = !showCreator">{{ showCreator ? '收起创建面板' : '布置新作业' }}</button></template></PageHeader>
+    <PageHeader title="作业管理"><template #actions><button type="button" @click="showCreator = !showCreator">{{ showCreator ? '收起创建面板' : '布置新作业' }}</button><button class="secondary-button" type="button" @click="router.push('/teacher/assignments/pending-grades')">手动批改</button></template></PageHeader>
     <InlineMessage :message="error" tone="error" /><InlineMessage :message="success" tone="success" />
     <div class="tabs assignment-filter-tabs" role="tablist"><button v-for="item in openStateFilters" :key="item.value" type="button" :class="{ active: openStateFilter === item.value }" @click="openStateFilter = item.value">{{ item.label }}</button></div>
     <section v-if="showCreator" class="content-card creator-card">

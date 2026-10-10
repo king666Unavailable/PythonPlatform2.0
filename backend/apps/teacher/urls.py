@@ -4,7 +4,14 @@ from django.urls import path
 
 from .class_management_views import classes, create_class, create_student, import_students_confirm, import_students_preview
 from .audit_views import student_operation_logs
-from .views import assignment_student_grades, class_alert_preferences, class_analytics, student_profile
+from .views import (
+    assignment_student_grades,
+    class_alert_preferences,
+    class_analytics,
+    pending_manual_grading,
+    pending_manual_grading_submission,
+    student_profile,
+)
 
 
 urlpatterns = [
@@ -21,5 +28,11 @@ urlpatterns = [
         name="teacher-assignment-student-grades",
     ),
     path("teacher/class/alert-preferences", class_alert_preferences, name="teacher-class-alert-preferences"),
+    path("teacher/class/pending-grades", pending_manual_grading, name="teacher-pending-grades"),
+    path(
+        "teacher/class/pending-grades/<str:submission_id>",
+        pending_manual_grading_submission,
+        name="teacher-pending-grades-submission",
+    ),
     path("students/<str:student_id>/profile", student_profile, name="teacher-student-profile"),
 ]

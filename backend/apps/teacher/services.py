@@ -300,6 +300,115 @@ class TeacherAnalyticsService:
         return config
 
     @staticmethod
+    def list_pending_manual_grading(
+        class_id: str, teacher_username: str, page: int = 1, page_size: int = 50
+    ) -> dict:
+        try:
+            with MySQLClassAnalyticsRepository() as repository:
+                return repository.list_pending_manual_grading(
+                    teacher_username, class_id, page=page, page_size=page_size
+                )
+        except Exception as exc:
+            logger.exception("teacher_pending_grading_list_failed", extra={"error_type": type(exc).__name__})
+            raise TeacherAnalyticsBackendUnavailable from exc
+
+    @staticmethod
+    def get_manual_grading_report(
+        submission_id: str, teacher_username: str, class_id: str
+    ) -> dict:
+        try:
+            with MySQLClassAnalyticsRepository() as repository:
+                report = repository.get_submission_grades_for_edit(
+                    "", "", teacher_username, class_id, submission_id=submission_id
+                )
+        except Exception as exc:
+            logger.exception("teacher_pending_grading_read_failed", extra={"error_type": type(exc).__name__})
+            raise TeacherAnalyticsBackendUnavailable from exc
+        if report is None:
+            raise TeacherAnalyticsNotFound
+        if not TeacherAnalyticsService._report_needs_manual_grading(report):
+            raise TeacherGradeUpdateConflict
+        return TeacherAnalyticsService._with_score_summary(report)
+
+    @staticmethod
+    def _report_needs_manual_grading(report: dict) -> bool:
+        return report["submission_status"] in {"grading", "grading_unavailable"} or not report["items"] or any(
+            item["score"] is None or item["status"] not in TERMINAL_GRADE_STATUSES
+            for item in report["items"]
+        )
+
+    @staticmethod
+    def _with_score_summary(report: dict) -> dict:
+        grades = [
+            {"question_position": item["position"], "score": item["score"], "status": item["status"]}
+            for item in report["items"]
+        ]
+        assignment_items = [
+            {"position": item["position"], "score": item["max_score"]}
+            for item in report["items"]
+        ]
+        report["total_score"] = calculate_submission_score(
+            grades, len(report["items"]), assignment_items=assignment_items
+        )
+        weighted = bool(
+            report["items"]
+            and all(item["max_score"] is not None and float(item["max_score"]) >= 0 for item in report["items"])
+            and sum(float(item["max_score"]) for item in report["items"]) > 0
+        )
+        report["max_total_score"] = (
+            round(sum(float(item["max_score"]) for item in report["items"]), 2) if weighted else 100
+        )
+        report["score_calculation"] = "weighted" if weighted else "percentage_average"
+        return report
+
+    @classmethod
+    def submit_manual_grades(
+        cls,
+        submission_id: str,
+        teacher_username: str,
+        class_id: str,
+        raw_grades: object,
+    ) -> dict:
+        current = cls.get_manual_grading_report(submission_id, teacher_username, class_id)
+        if not isinstance(raw_grades, list):
+            raise TeacherGradeUpdateInvalid
+        expected_positions = {int(item["position"]) for item in current["items"]}
+        grade_scores: dict[int, float] = {}
+        for item in raw_grades:
+            if not isinstance(item, dict):
+                raise TeacherGradeUpdateInvalid
+            try:
+                position = int(item.get("position"))
+                raw_score = item.get("score")
+                if isinstance(raw_score, bool):
+                    raise ValueError
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                raise TeacherGradeUpdateInvalid from None
+            if position in grade_scores or not math.isfinite(score) or not 0 <= score <= 100:
+                raise TeacherGradeUpdateInvalid
+            grade_scores[position] = score
+        if set(grade_scores) != expected_positions:
+            raise TeacherGradeUpdateInvalid
+        try:
+            with MySQLClassAnalyticsRepository() as repository:
+                updated = repository.update_submission_grades_manually(
+                    current["assignment_id"],
+                    current["student_username"],
+                    teacher_username,
+                    class_id,
+                    grade_scores,
+                    submission_id=submission_id,
+                    finalize_pending=True,
+                )
+        except Exception as exc:
+            logger.exception("teacher_pending_grading_save_failed", extra={"error_type": type(exc).__name__})
+            raise TeacherAnalyticsBackendUnavailable from exc
+        if updated is None:
+            raise TeacherGradeUpdateConflict
+        return cls._with_score_summary(updated)
+
+    @staticmethod
     def get_submission_grades_for_edit(
         assignment_id: str,
         student_username: str,

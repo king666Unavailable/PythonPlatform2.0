@@ -69,11 +69,14 @@ export interface ClassAnalyticsResponse {
 export interface TeacherQuestionGrade {
   position: number
   title: string
+  type_code?: string
   max_score: number | null
   score: number | null
   status: string
   feedback: string
   provider: string
+  answer?: unknown
+  time_spent_seconds?: number | null
 }
 
 export interface TeacherAssignmentGradeReport {
@@ -85,10 +88,29 @@ export interface TeacherAssignmentGradeReport {
   submission_mode: string
   makeup_window_id: string | null
   submitted_at: string | null
+  attempt_no?: number
   items: TeacherQuestionGrade[]
   total_score: number | null
   max_total_score: number
   score_calculation: 'weighted' | 'percentage_average'
+}
+
+export interface PendingManualGradeItem {
+  submission_id: string
+  assignment_id: string
+  assignment_title: string
+  student_username: string
+  student_name: string
+  submission_status: string
+  submission_mode: 'normal' | 'makeup'
+  submitted_at: string | null
+  pending_item_count: number
+}
+
+export interface PendingManualGradeResponse {
+  class: Record<string, unknown>
+  items: PendingManualGradeItem[]
+  meta: { total: number; page: number; page_size: number; total_pages: number }
 }
 
 export interface TeacherStudentProfileResponse {

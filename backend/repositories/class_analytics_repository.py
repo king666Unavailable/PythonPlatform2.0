@@ -422,15 +422,96 @@ class MySQLClassAnalyticsRepository:
                 )
             return result
 
+    def list_pending_manual_grading(
+        self, teacher_username: str, class_id: str, *, page: int = 1, page_size: int = 50
+    ) -> dict:
+        """List this teacher's current-class submissions with unfinished grades."""
+        page = max(1, int(page))
+        page_size = min(max(1, int(page_size)), 100)
+        scope = """a.owner_username=%s AND (a.class_id=%s OR a.class_id IS NULL)
+                    AND cs.class_id=%s AND cs.is_active=1"""
+        pending = """(
+            s.status IN ('grading', 'grading_unavailable')
+            OR EXISTS (
+                SELECT 1
+                FROM assignment_items ai
+                LEFT JOIN submission_grades g
+                  ON g.submission_id=s.id AND g.question_position=ai.position
+                WHERE ai.assignment_id=a.id
+                  AND (g.id IS NULL OR g.score IS NULL
+                       OR g.status NOT IN ('graded', 'code_structure_error', 'function_not_found'))
+            )
+        )"""
+        params = (teacher_username, class_id, class_id)
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"""SELECT COUNT(*) AS total
+                    FROM submissions s
+                    INNER JOIN assignments a ON a.id=s.assignment_id
+                    INNER JOIN classes_student cs ON cs.student_username=s.student_username
+                    WHERE {scope} AND s.status <> 'draft' AND {pending}""",
+                params,
+            )
+            total = int((cursor.fetchone() or {}).get("total") or 0)
+            total_pages = max(1, (total + page_size - 1) // page_size)
+            page = min(page, total_pages)
+            cursor.execute(
+                f"""SELECT s.id AS submission_id, s.assignment_id, s.student_username,
+                           COALESCE(u.name, s.student_username) AS student_name,
+                           s.status AS submission_status, s.submission_mode,
+                           s.submitted_at, a.title AS assignment_title,
+                           (SELECT COUNT(*)
+                            FROM assignment_items ai
+                            LEFT JOIN submission_grades g
+                              ON g.submission_id=s.id AND g.question_position=ai.position
+                            WHERE ai.assignment_id=a.id
+                              AND (g.id IS NULL OR g.score IS NULL
+                                   OR g.status NOT IN ('graded', 'code_structure_error', 'function_not_found'))
+                           ) AS pending_item_count
+                    FROM submissions s
+                    INNER JOIN assignments a ON a.id=s.assignment_id
+                    INNER JOIN classes_student cs ON cs.student_username=s.student_username
+                    LEFT JOIN user_students u ON u.username=s.student_username
+                    WHERE {scope} AND s.status <> 'draft' AND {pending}
+                    ORDER BY s.submitted_at ASC, s.id ASC
+                    LIMIT %s OFFSET %s""",
+                (*params, page_size, (page - 1) * page_size),
+            )
+            items = [
+                {
+                    **dict(row),
+                    "submission_id": str(row["submission_id"]),
+                    "assignment_id": str(row["assignment_id"]),
+                    "pending_item_count": int(row.get("pending_item_count") or 0),
+                }
+                for row in cursor.fetchall()
+            ]
+        return {
+            "items": items,
+            "meta": {"total": total, "page": page, "page_size": page_size, "total_pages": total_pages},
+        }
+
     def get_submission_grades_for_edit(
         self,
         assignment_id: str,
         student_username: str,
         teacher_username: str,
         class_id: str,
+        submission_id: str | None = None,
     ) -> dict | None:
         """Load the latest non-draft submission for a teacher's class assignment."""
         with self.connection.cursor() as cursor:
+            if submission_id:
+                cursor.execute(
+                    """SELECT assignment_id, student_username FROM submissions
+                       WHERE id=%s AND status <> 'draft' LIMIT 1""",
+                    (submission_id,),
+                )
+                identity = cursor.fetchone()
+                if not identity:
+                    return None
+                assignment_id = str(identity["assignment_id"])
+                student_username = str(identity["student_username"])
             cursor.execute(
                 """SELECT id, title FROM assignments
                    WHERE id=%s AND owner_username=%s
@@ -442,15 +523,25 @@ class MySQLClassAnalyticsRepository:
             if not assignment:
                 return None
 
-            cursor.execute(
-                """SELECT id, status, attempt_no, submission_mode, makeup_window_id,
-                          submitted_at, updated_at
-                   FROM submissions
-                   WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
-                   ORDER BY attempt_no DESC, updated_at DESC, id DESC
-                   LIMIT 1""",
-                (assignment_id, student_username),
-            )
+            if submission_id:
+                cursor.execute(
+                    """SELECT id, status, attempt_no, submission_mode, makeup_window_id,
+                              submitted_at, updated_at, answers_json, time_spent_json
+                       FROM submissions
+                       WHERE id=%s AND assignment_id=%s AND student_username=%s AND status <> 'draft'
+                       LIMIT 1""",
+                    (submission_id, assignment_id, student_username),
+                )
+            else:
+                cursor.execute(
+                    """SELECT id, status, attempt_no, submission_mode, makeup_window_id,
+                              submitted_at, updated_at, answers_json, time_spent_json
+                       FROM submissions
+                       WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
+                       ORDER BY attempt_no DESC, updated_at DESC, id DESC
+                       LIMIT 1""",
+                    (assignment_id, student_username),
+                )
             submission = cursor.fetchone()
             if not submission:
                 return None
@@ -458,6 +549,7 @@ class MySQLClassAnalyticsRepository:
             cursor.execute(
                 """SELECT ai.position, ai.question_ref, ai.score AS max_score,
                           COALESCE(q.title, ai.question_ref, '') AS question_title,
+                          q.question_type,
                           g.score, g.status AS grade_status, g.feedback, g.provider
                    FROM assignment_items ai
                    LEFT JOIN graph_questions q ON q.id=ai.question_id
@@ -467,17 +559,44 @@ class MySQLClassAnalyticsRepository:
                    ORDER BY ai.position""",
                 (submission["id"], assignment_id),
             )
+            raw_items = cursor.fetchall()
+            answers = submission.get("answers_json")
+            time_spent = submission.get("time_spent_json")
+            try:
+                answers = json.loads(answers) if isinstance(answers, str) else answers
+            except (TypeError, ValueError, json.JSONDecodeError):
+                answers = {}
+            try:
+                time_spent = json.loads(time_spent) if isinstance(time_spent, str) else time_spent
+            except (TypeError, ValueError, json.JSONDecodeError):
+                time_spent = {}
+            if not isinstance(answers, (dict, list)):
+                answers = {}
+            if not isinstance(time_spent, dict):
+                time_spent = {}
             items = [
                 {
                     "position": int(row["position"]),
                     "title": str(row.get("question_title") or "") or f"第{int(row['position']) + 1}题",
+                    "type_code": str(row.get("question_type") or ""),
                     "max_score": float(row["max_score"]) if row.get("max_score") is not None else None,
-                    "score": float(row["score"]) if row.get("score") is not None else None,
+                    "score": (
+                        float(row["score"])
+                        if row.get("score") is not None
+                        and str(row.get("grade_status") or "") in {"graded", "code_structure_error", "function_not_found"}
+                        else None
+                    ),
                     "status": str(row.get("grade_status") or ""),
                     "feedback": str(row.get("feedback") or ""),
                     "provider": str(row.get("provider") or ""),
+                    "answer": (
+                        answers.get(str(row["position"]), answers.get(int(row["position"]), ""))
+                        if isinstance(answers, dict)
+                        else (answers[int(row["position"])] if int(row["position"]) < len(answers) else "")
+                    ),
+                    "time_spent_seconds": time_spent.get(str(row["position"])),
                 }
-                for row in cursor.fetchall()
+                for row in raw_items
             ]
 
         return {
@@ -489,6 +608,7 @@ class MySQLClassAnalyticsRepository:
             "submission_mode": str(submission.get("submission_mode") or "normal"),
             "makeup_window_id": str(submission["makeup_window_id"]) if submission.get("makeup_window_id") is not None else None,
             "submitted_at": submission.get("submitted_at"),
+            "attempt_no": int(submission.get("attempt_no") or 1),
             "items": items,
         }
 
@@ -499,6 +619,8 @@ class MySQLClassAnalyticsRepository:
         teacher_username: str,
         class_id: str,
         grade_scores: dict[int, float],
+        submission_id: str | None = None,
+        finalize_pending: bool = False,
     ) -> dict | None:
         """Update per-question grades and write the audit event atomically."""
         self.connection.begin()
@@ -516,15 +638,23 @@ class MySQLClassAnalyticsRepository:
                     self.connection.rollback()
                     return None
 
-                cursor.execute(
-                    """SELECT id, status FROM submissions
-                       WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
-                       ORDER BY attempt_no DESC, updated_at DESC, id DESC
-                       LIMIT 1 FOR UPDATE""",
-                    (assignment_id, student_username),
-                )
+                if submission_id:
+                    cursor.execute(
+                        """SELECT id, status FROM submissions
+                           WHERE id=%s AND assignment_id=%s AND student_username=%s AND status <> 'draft'
+                           LIMIT 1 FOR UPDATE""",
+                        (submission_id, assignment_id, student_username),
+                    )
+                else:
+                    cursor.execute(
+                        """SELECT id, status FROM submissions
+                           WHERE assignment_id=%s AND student_username=%s AND status <> 'draft'
+                           ORDER BY attempt_no DESC, updated_at DESC, id DESC
+                           LIMIT 1 FOR UPDATE""",
+                        (assignment_id, student_username),
+                    )
                 submission = cursor.fetchone()
-                if not submission or str(submission["status"]) != "graded":
+                if not submission or (not finalize_pending and str(submission["status"]) != "graded"):
                     self.connection.rollback()
                     return None
 
@@ -543,44 +673,68 @@ class MySQLClassAnalyticsRepository:
                 )
                 grade_rows = cursor.fetchall()
                 grades_by_position = {int(row["question_position"]): row for row in grade_rows}
-                if (
-                    not expected_positions
-                    or set(grade_scores) != expected_positions
-                    or set(grades_by_position) != expected_positions
+                has_pending_grades = (
+                    set(grades_by_position) != expected_positions
                     or any(
                         grades_by_position[position].get("score") is None
                         or str(grades_by_position[position].get("status") or "")
                         not in {"graded", "code_structure_error", "function_not_found"}
-                        for position in expected_positions
+                        for position in expected_positions.intersection(grades_by_position)
                     )
+                )
+                if (
+                    not expected_positions
+                    or set(grade_scores) != expected_positions
+                    or (finalize_pending and not has_pending_grades and str(submission["status"]) == "graded")
+                    or (not finalize_pending and has_pending_grades)
                 ):
                     self.connection.rollback()
                     return None
 
                 changes = []
                 for position in sorted(expected_positions):
-                    row = grades_by_position[position]
-                    old_score = float(row["score"])
-                    new_score = float(grade_scores[position])
-                    if old_score == new_score:
-                        continue
-                    cursor.execute(
-                        """UPDATE submission_grades
-                           SET score=%s, status='graded', feedback='教师已调整本题得分', provider='teacher_manual',
-                               updated_at=CURRENT_TIMESTAMP
-                           WHERE submission_id=%s AND question_position=%s""",
-                        (new_score, submission["id"], position),
+                    row = grades_by_position.get(position, {})
+                    grade_status = str(row.get("status") or "")
+                    old_score = (
+                        float(row["score"])
+                        if row.get("score") is not None
+                        and grade_status in {"graded", "code_structure_error", "function_not_found"}
+                        else "待判"
                     )
+                    new_score = float(grade_scores[position])
+                    if not finalize_pending and old_score == new_score:
+                        continue
+                    if finalize_pending:
+                        cursor.execute(
+                            """INSERT INTO submission_grades
+                               (submission_id, question_position, score, status, feedback, provider, grading_details_json)
+                               VALUES (%s, %s, %s, 'graded', '教师手动判卷', 'teacher_manual', '{}')
+                               ON DUPLICATE KEY UPDATE score=VALUES(score), status='graded',
+                                 feedback='教师手动判卷', provider='teacher_manual', updated_at=CURRENT_TIMESTAMP""",
+                            (submission["id"], position, new_score),
+                        )
+                    else:
+                        cursor.execute(
+                            """UPDATE submission_grades
+                               SET score=%s, status='graded', feedback='教师已调整本题得分', provider='teacher_manual',
+                                   updated_at=CURRENT_TIMESTAMP
+                               WHERE submission_id=%s AND question_position=%s""",
+                            (new_score, submission["id"], position),
+                        )
                     changes.append(
                         {
                             "question_position": position,
                             "old_score": old_score,
                             "new_score": new_score,
                             "previous_provider": str(row.get("provider") or ""),
+                            "previous_status": grade_status or "missing",
                         }
                     )
 
-                if changes:
+                if finalize_pending:
+                    cursor.execute("UPDATE submissions SET status='graded', score=NULL WHERE id=%s", (submission["id"],))
+
+                if changes or finalize_pending:
                     cursor.execute(
                         """INSERT INTO audit_logs
                            (actor_username, actor_role, action, resource_type, resource_id, detail_json)
@@ -593,6 +747,8 @@ class MySQLClassAnalyticsRepository:
                                     "assignment_id": str(assignment_id),
                                     "assignment_title": str(assignment["title"]),
                                     "student_username": student_username,
+                                    "review_type": "manual_grading" if finalize_pending else "score_adjustment",
+                                    "previous_submission_status": str(submission["status"]),
                                     "changes": changes,
                                 },
                                 ensure_ascii=False,
@@ -606,5 +762,5 @@ class MySQLClassAnalyticsRepository:
             raise
 
         return self.get_submission_grades_for_edit(
-            assignment_id, student_username, teacher_username, class_id
+            assignment_id, student_username, teacher_username, class_id, submission_id=submission_id
         )

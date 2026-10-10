@@ -4,7 +4,7 @@ import type { KnowledgeGraphResponse } from '@/types/knowledge'
 import type { StudentMasteryResponse } from '@/types/mastery'
 import type { LearningProfileReport } from '@/types/learningProfile'
 import type { Question, QuestionListResponse } from '@/types/question'
-import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, TeacherAssignmentGradeReport, TeacherStudentProfileResponse } from '@/types/teacher'
+import type { ClassAnalyticsResponse, ClassKnowledgeMasteryResponse, PendingManualGradeResponse, TeacherAssignmentGradeReport, TeacherStudentProfileResponse } from '@/types/teacher'
 import type { ClassContextResponse, TeachingClass } from '@/types/classContext'
 import type { NavigationVisibilityItem } from '@/types/navigation'
 
@@ -161,6 +161,24 @@ export function fetchStudentLearningProfile() {
 export function fetchClassAnalytics(classId = 'all', page = 1, pageSize = 20) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   return request<ClassAnalyticsResponse>(`/api/v1/classes/${encodeURIComponent(classId)}/analytics?${params.toString()}`)
+}
+
+export function fetchPendingManualGrades(page = 1, pageSize = 50) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  return request<PendingManualGradeResponse>(`/api/v1/teacher/class/pending-grades?${params.toString()}`)
+}
+
+export function fetchManualGradeReport(submissionId: string) {
+  return request<{ grade_report: TeacherAssignmentGradeReport }>(
+    `/api/v1/teacher/class/pending-grades/${encodeURIComponent(submissionId)}`,
+  )
+}
+
+export function saveManualGradeReport(submissionId: string, grades: Array<{ position: number; score: number }>) {
+  return request<{ grade_report: TeacherAssignmentGradeReport }>(
+    `/api/v1/teacher/class/pending-grades/${encodeURIComponent(submissionId)}`,
+    { method: 'PUT', body: JSON.stringify({ grades }) },
+  )
 }
 
 export interface ClassAlertRules {
