@@ -8,7 +8,7 @@ import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import ScoreLineChart from '@/components/data-display/ScoreLineChart.vue'
 import MetricCard from '@/components/ui/MetricCard.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
-import type { ClassKnowledgeMasteryResponse, ClassMasteryNode, TeacherAssignmentGradeReport } from '@/types/teacher'
+import type { ClassKnowledgeMasteryResponse, ClassMasteryNode, TeacherAssignmentGradeReport, TeacherClassStudent } from '@/types/teacher'
 
 const classId = ref('all')
 const route = useRoute()
@@ -26,6 +26,8 @@ const selectedMasteryKey = ref('')
 const detailsPage = ref(1)
 const detailsPageSize = 20
 const detailsLoading = ref(false)
+const detailsExporting = ref(false)
+const detailsExportError = ref('')
 const gradeReport = ref<TeacherAssignmentGradeReport | null>(null)
 const gradeEditorStudent = ref<{ username: string; name: string } | null>(null)
 const gradeEditorOpen = ref(false)
@@ -190,6 +192,63 @@ function assignmentScore(row: any, assignment: { id: string; name: string }) {
 
 function assignmentSubmissionMode(row: any, assignment: { id: string }) {
   return row.assignment_submission_modes?.[assignment.id] ?? null
+}
+
+function csvCell(value: unknown) {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`
+}
+
+function downloadCsv(filename: string, rows: unknown[][]) {
+  const content = `\ufeff${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+async function exportClassDetailsCsv() {
+  if (detailsExporting.value) return
+  detailsExporting.value = true
+  detailsExportError.value = ''
+  try {
+    const classKey = classId.value.trim() || 'all'
+    const pageSize = 100
+    const firstPage = await fetchClassAnalytics(classKey, 1, pageSize)
+    const students: TeacherClassStudent[] = [...firstPage.students]
+    const totalPages = Number(firstPage.meta.pagination?.total_pages ?? 1)
+    for (let page = 2; page <= totalPages; page += 1) {
+      const result = await fetchClassAnalytics(classKey, page, pageSize)
+      students.push(...result.students)
+    }
+
+    const tests = firstPage.tests
+    const rows: unknown[][] = [
+      ['序号', '学号', '姓名', '班级', ...tests.map((test) => test.name)],
+      ...students.map((item, index) => [
+        index + 1,
+        item.username,
+        `${item.name}${item.is_active === false ? '（已停用）' : ''}`,
+        item.study_class || '未填写',
+        ...tests.map((test) => {
+          const score = assignmentScore(item, test)
+          const makeup = assignmentSubmissionMode(item, test) === 'makeup'
+          return score === null || score === undefined
+            ? (makeup ? '—（补交）' : '—')
+            : `${score}${makeup ? '（补交）' : ''}`
+        }),
+      ]),
+    ]
+    const safeClassName = String(firstPage.class.name || '班级学情').replace(/[\\/:*?"<>|]/g, '_')
+    const date = new Date().toLocaleDateString('sv-SE')
+    downloadCsv(`${safeClassName}_作业详情_${date}.csv`, rows)
+  } catch (cause) {
+    detailsExportError.value = cause instanceof Error ? cause.message : '导出 CSV 失败，请稍后重试。'
+  } finally {
+    detailsExporting.value = false
+  }
 }
 
 const gradeEditorScoresValid = computed(() => Boolean(
@@ -480,7 +539,8 @@ if (route.query.tab === 'mastery') {
 
       <template v-else>
         <section class="content-card flush-card">
-          <div class="section-heading padded-heading"><div><h3>作业详情</h3><p>查看各学生在所有作业和测试中的具体得分。</p></div></div>
+          <div class="section-heading padded-heading"><div><h3>作业详情</h3><p>查看各学生在所有作业和测试中的具体得分。</p></div><button class="secondary-button" type="button" :disabled="detailsExporting || detailsLoading" @click="exportClassDetailsCsv">{{ detailsExporting ? '正在导出…' : '导出 CSV' }}</button></div>
+          <InlineMessage :message="detailsExportError" tone="error" />
           <div v-if="detailsLoading" class="loading-state table-inline-loading">正在加载第 {{ detailsPage }} 页…</div>
           <div class="data-table class-detail-table">
             <div class="data-table-head"><span>序号</span><span>学号</span><span>姓名</span><span>班级</span><span v-for="test in data.tests" :key="test.id">{{ test.name }}<small> 得分</small></span></div>
