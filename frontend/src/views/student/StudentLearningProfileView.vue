@@ -14,6 +14,31 @@ const dimensions = computed(() => report.value?.overview.dimensions ?? { progres
 const classAverage = computed(() => report.value?.overview.class_average ?? { progress: null, habit: null, ability: null })
 const dimensionValues = computed(() => [dimensions.value.progress, dimensions.value.habit, dimensions.value.ability])
 const classValues = computed(() => [classAverage.value.progress, classAverage.value.habit, classAverage.value.ability])
+const backgroundGroups = computed(() => {
+  const background = report.value?.background
+  if (!background) return []
+  return [
+    {
+      title: '学习基础与目标',
+      fields: [
+        { label: '初始基础水平', value: background.base_level },
+        { label: '选课动机', values: background.motivations },
+        { label: '应用方向', values: background.directions },
+        { label: '预期能力等级', value: background.expected_level },
+      ],
+    },
+    {
+      title: '学习偏好',
+      fields: [
+        { label: '学习时间', value: background.study_time },
+        { label: '资源类型', values: background.resources },
+        { label: '题目类型', values: background.question_types },
+        { label: '难点应对', value: background.difficulty_strategy },
+        { label: '学习方式', values: background.learning_styles },
+      ],
+    },
+  ]
+})
 const suggestionDefinitions = [
   { dimension: '学习进展', tone: 'blue' as const },
   { dimension: '学习习惯', tone: 'green' as const },
@@ -126,10 +151,26 @@ onMounted(() => void load())
         </div>
       </section>
 
+      <section class="content-card learning-profile-background">
+        <div class="learning-profile-card-title"><div><h3>学习背景</h3></div><span>可通过顶部问卷入口修改</span></div>
+        <div class="learning-background-completion" :class="{ incomplete: !report.background.completed }"><span>问卷完成状态</span><strong>{{ report.background.completed ? '已完成' : '未完成' }}</strong></div>
+        <p v-if="!report.background.completed" class="learning-background-note">以下仅展示已填写内容。</p>
+        <div class="learning-background-grid">
+          <section v-for="group in backgroundGroups" :key="group.title" class="learning-background-group">
+            <h4>{{ group.title }}</h4>
+            <div v-for="field in group.fields" :key="field.label" class="learning-background-field">
+              <span>{{ field.label }}</span>
+              <div v-if="field.values?.length" class="learning-background-tags"><span v-for="value in field.values" :key="value">{{ value }}</span></div>
+              <p v-else>{{ field.value || '未填写' }}</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section class="learning-profile-detail-grid">
         <article class="content-card learning-profile-detail-card progress"><div class="learning-profile-card-title"><h3>学习进展</h3><span>掌握与成绩</span></div><div class="profile-metric-row"><span>课程知识掌握度</span><strong>{{ percent(report.progress.knowledge_mastery) }}</strong></div><div class="profile-bar"><i :style="{ width: barWidth(report.progress.knowledge_mastery) }" /></div><div class="profile-metric-row"><span>已出成绩作业</span><strong>{{ report.progress.scored_assignment_count }} 次</strong></div><div class="profile-metric-row"><span>已出成绩平均分</span><strong>{{ score(report.progress.average_score) }}</strong></div><div class="profile-subsection"><h4>薄弱知识点</h4><div v-if="report.progress.weak_points.length" class="profile-weak-list"><div v-for="point in report.progress.weak_points" :key="point.title"><span>{{ point.title }}</span><strong>{{ percent(point.mastery) }}</strong></div></div><p v-else class="muted">暂无足够掌握度记录。</p></div><div class="profile-subsection profile-score-link-section"><div class="profile-score-heading"><h4>成绩曲线</h4><RouterLink class="profile-score-link" to="/student/profile" aria-label="去查看成绩曲线" title="去查看成绩曲线">去查看 <span aria-hidden="true">→</span></RouterLink></div></div></article>
 
-        <article class="content-card learning-profile-detail-card habit"><div class="learning-profile-card-title"><h3>学习习惯</h3><span>提交与投入</span></div><div class="profile-stat-grid"><div><strong>{{ percent(report.habit.submission_rate) }}</strong><span>作业提交率</span></div><div><strong>{{ percent(report.habit.on_time_rate) }}</strong><span>按时提交率</span></div><div><strong>{{ report.habit.active_days }}</strong><span>活跃天数</span></div><div><strong>{{ report.habit.average_question_seconds === null ? '暂无' : `${report.habit.average_question_seconds} 秒` }}</strong><span>平均每题用时</span></div><div class="profile-questionnaire-status"><strong>{{ report.habit.questionnaire_completed ? '已完成' : '未完成' }}</strong><span>问卷完成状态</span></div></div><div class="profile-subsection"><h4>学习行为说明</h4><p class="profile-explanation">学习习惯分综合提交率、按时提交、活跃天数和逐题用时计算；问卷结果仅作为辅助参考，不会替代学习行为数据。</p><p v-if="!report.habit.questionnaire_completed" class="profile-data-note">问卷尚未完成，当前画像不使用自我评价数据。</p></div></article>
+        <article class="content-card learning-profile-detail-card habit"><div class="learning-profile-card-title"><h3>学习习惯</h3><span>提交与投入</span></div><div class="profile-stat-grid"><div><strong>{{ percent(report.habit.submission_rate) }}</strong><span>作业提交率</span></div><div><strong>{{ percent(report.habit.on_time_rate) }}</strong><span>按时提交率</span></div><div><strong>{{ report.habit.active_days }}</strong><span>活跃天数</span></div><div><strong>{{ report.habit.average_question_seconds === null ? '暂无' : `${report.habit.average_question_seconds} 秒` }}</strong><span>平均每题用时</span></div></div><div class="profile-subsection"><h4>学习行为说明</h4><p class="profile-explanation">学习习惯分综合提交率、按时提交、活跃天数和逐题用时计算。</p></div></article>
 
         <article class="content-card learning-profile-detail-card ability"><div class="learning-profile-card-title"><h3>学习能力</h3><span>题型与难度</span></div><div class="profile-metric-row"><span>客观题正确率</span><strong>{{ percent(report.ability.objective_accuracy) }}</strong></div><div class="profile-bar"><i :style="{ width: barWidth(report.ability.objective_accuracy) }" /></div><div class="profile-metric-row"><span>主观题/编程题正确率</span><strong>{{ percent(report.ability.subjective_accuracy) }}</strong></div><div class="profile-bar profile-bar-secondary"><i :style="{ width: barWidth(report.ability.subjective_accuracy) }" /></div><div class="profile-subsection"><h4>不同难度正确率</h4><div v-if="report.ability.difficulty_accuracy.length" class="profile-bars-list"><div v-for="item in report.ability.difficulty_accuracy" :key="item.label"><span>{{ item.label }}（{{ item.count }} 题）</span><strong>{{ percent(item.accuracy) }}</strong><i><b :style="{ width: barWidth(item.accuracy) }" /></i></div></div><p v-else class="muted">暂无足够的题目难度数据。</p></div><div class="profile-subsection"><h4>题型表现</h4><div v-if="report.ability.question_type_accuracy.length" class="profile-type-list"><span v-for="item in report.ability.question_type_accuracy" :key="item.label">{{ questionTypeLabel(item.label) }}：{{ percent(item.accuracy) }}</span></div><p v-else class="muted">暂无逐题成绩数据。</p></div></article>
       </section>

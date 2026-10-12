@@ -52,6 +52,18 @@ export interface LearningProfileReport {
     question_type_accuracy: Array<{ label: string; accuracy: number | null; count: number }>
     high_difficulty_accuracy: number | null
   }
+  background: {
+    completed: boolean
+    base_level: string | null
+    motivations: string[]
+    directions: string[]
+    expected_level: string | null
+    study_time: string | null
+    resources: string[]
+    question_types: string[]
+    difficulty_strategy: string | null
+    learning_styles: string[]
+  }
   suggestions: Array<{ dimension: string; tone: 'blue' | 'green' | 'orange'; text: string }>
   meta: {
     source: string

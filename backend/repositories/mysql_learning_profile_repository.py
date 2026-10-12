@@ -1,4 +1,4 @@
-"""MySQL read model for the student's three-dimensional learning profile."""
+"""MySQL read model for the student's learning profile."""
 
 from __future__ import annotations
 
@@ -135,6 +135,7 @@ class MySQLLearningProfileRepository:
             },
             "habit": habits,
             "ability": ability,
+            "background": self._learning_background(questionnaire),
             "suggestions": self._suggestions(progress, habits, ability),
             "meta": {
                 "source": "MySQL assignments + submissions + submission_grades + student_mastery",
@@ -256,6 +257,33 @@ class MySQLLearningProfileRepository:
         cursor.execute("SELECT is_completed, responses_json FROM student_questionnaires WHERE student_username=%s LIMIT 1", (username,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    @staticmethod
+    def _learning_background(questionnaire: dict[str, Any] | None) -> dict[str, Any]:
+        responses = _loads((questionnaire or {}).get("responses_json"), {})
+
+        def text_value(key: str) -> str | None:
+            value = responses.get(key)
+            return str(value).strip() or None if value is not None else None
+
+        def list_value(key: str) -> list[str]:
+            value = responses.get(key)
+            if not isinstance(value, list):
+                return []
+            return [str(item).strip() for item in value if item is not None and str(item).strip()]
+
+        return {
+            "completed": bool((questionnaire or {}).get("is_completed")),
+            "base_level": text_value("base_level"),
+            "motivations": list_value("motivations"),
+            "directions": list_value("directions"),
+            "expected_level": text_value("expected_level"),
+            "study_time": text_value("study_time"),
+            "resources": list_value("resources"),
+            "question_types": list_value("question_types"),
+            "difficulty_strategy": text_value("difficulty_strategy"),
+            "learning_styles": list_value("learning_styles"),
+        }
 
     @staticmethod
     def _class_name(cursor, class_id: str) -> str:
