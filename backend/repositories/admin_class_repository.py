@@ -36,7 +36,7 @@ class AdminClassRepository:
         }
 
     def list_classes(self, keyword: str = "", status: str = "all") -> list[dict[str, Any]]:
-        clauses = ["c.is_active IN (0,1)"]
+        clauses = ["c.is_active IN (0,1)", "c.frozen_at IS NULL"]
         params: list[Any] = []
         if keyword:
             clauses.append("(c.title LIKE %s OR c.teaching_class LIKE %s OR c.academic_year LIKE %s)")
@@ -51,12 +51,14 @@ class AdminClassRepository:
             cursor.execute(
                 f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,
                            gc.title AS graph_class_title,c.teacher_name,c.is_active,
-                           COUNT(DISTINCT CASE WHEN tc.is_active=1 THEN tc.teacher_username END) AS teacher_count,
-                           COUNT(DISTINCT CASE WHEN sc.is_active=1 THEN sc.student_username END) AS student_count
+                           COUNT(DISTINCT CASE WHEN tc.is_active=1 AND t.is_active=1 AND t.frozen_at IS NULL THEN tc.teacher_username END) AS teacher_count,
+                           COUNT(DISTINCT CASE WHEN sc.is_active=1 AND s.frozen_at IS NULL THEN sc.student_username END) AS student_count
                     FROM classes c
                     LEFT JOIN graph_classes gc ON gc.id=c.graph_class_id
                     LEFT JOIN classes_teacher tc ON tc.class_id=c.id
+                    LEFT JOIN user_teachers t ON t.username=tc.teacher_username
                     LEFT JOIN classes_student sc ON sc.class_id=c.id
+                    LEFT JOIN user_students s ON s.username=sc.student_username
                     WHERE {where}
                     GROUP BY c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,gc.title,c.teacher_name,c.is_active
                     ORDER BY c.academic_year DESC,c.id DESC""",
@@ -67,7 +69,7 @@ class AdminClassRepository:
     def get_class(self, class_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
             cursor.execute(
-                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,
+                """SELECT c.id,c.title,c.teaching_class,c.academic_year,c.graph_class_id,c.frozen_at,
                           gc.title AS graph_class_title,c.teacher_name,c.is_active,
                           (SELECT COUNT(*) FROM classes_teacher tc WHERE tc.class_id=c.id AND tc.is_active=1) AS teacher_count,
                           (SELECT COUNT(*) FROM classes_student sc WHERE sc.class_id=c.id AND sc.is_active=1) AS student_count
@@ -76,7 +78,7 @@ class AdminClassRepository:
                 (class_id,),
             )
             row = cursor.fetchone()
-        return self._class(row) if row else None
+        return self._class(row) if row and row.get("frozen_at") is None else None
 
     def find_existing(
         self,
@@ -150,7 +152,7 @@ class AdminClassRepository:
         if not table:
             return []
         with self.connection.cursor() as cursor:
-            cursor.execute(f"SELECT username,name,is_active FROM {table} ORDER BY username")
+            cursor.execute(f"SELECT username,name,is_active FROM {table} WHERE frozen_at IS NULL ORDER BY username")
             return [
                 {
                     "username": row["username"],
@@ -167,14 +169,14 @@ class AdminClassRepository:
             cursor.execute(
                 """SELECT t.username,t.name FROM classes_teacher tc
                    INNER JOIN user_teachers t ON t.username=tc.teacher_username
-                   WHERE tc.class_id=%s AND tc.is_active=1 ORDER BY t.username""",
+                   WHERE tc.class_id=%s AND tc.is_active=1 AND t.frozen_at IS NULL ORDER BY t.username""",
                 (class_id,),
             )
             result["teachers"] = [dict(row) for row in cursor.fetchall()]
             cursor.execute(
                 """SELECT s.username,s.name,s.is_active FROM classes_student sc
                    INNER JOIN user_students s ON s.username=sc.student_username
-                   WHERE sc.class_id=%s AND sc.is_active=1 ORDER BY s.username""",
+                   WHERE sc.class_id=%s AND sc.is_active=1 AND s.frozen_at IS NULL ORDER BY s.username""",
                 (class_id,),
             )
             result["students"] = [dict(row) for row in cursor.fetchall()]
@@ -186,7 +188,7 @@ class AdminClassRepository:
             return []
         placeholders = ",".join(["%s"] * len(normalized))
         with self.connection.cursor() as cursor:
-            cursor.execute(f"SELECT id FROM classes WHERE is_active=1 AND id IN ({placeholders})", normalized)
+            cursor.execute(f"SELECT id FROM classes WHERE is_active=1 AND frozen_at IS NULL AND id IN ({placeholders})", normalized)
             found = {str(row["id"]) for row in cursor.fetchall()}
         return [value for value in normalized if value in found]
 
@@ -227,7 +229,7 @@ class AdminClassRepository:
         with self.connection.cursor() as cursor:
             valid: set[str] = set()
             if requested:
-                cursor.execute(f"SELECT username FROM {account_table} WHERE username IN ({placeholders})", requested)
+                cursor.execute(f"SELECT username FROM {account_table} WHERE frozen_at IS NULL AND username IN ({placeholders})", requested)
                 valid = {str(row["username"]) for row in cursor.fetchall()}
             invalid = [value for value in requested if value not in valid]
             if invalid:
@@ -247,3 +249,16 @@ class AdminClassRepository:
             "removed": sorted(previous - valid),
             "invalid": [],
         }
+
+    def account_names(self, role: str, usernames: list[str]) -> dict[str, str]:
+        table = {"teacher": "user_teachers", "student": "user_students"}.get(role)
+        normalized = list(dict.fromkeys(str(value).strip() for value in usernames if str(value).strip()))
+        if not table or not normalized:
+            return {}
+        placeholders = ",".join(["%s"] * len(normalized))
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT username,name FROM {table} WHERE username IN ({placeholders})",
+                normalized,
+            )
+            return {str(row["username"]): str(row.get("name") or "") for row in cursor.fetchall()}

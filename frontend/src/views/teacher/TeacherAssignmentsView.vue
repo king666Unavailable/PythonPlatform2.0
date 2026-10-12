@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createAssignment, fetchQuestionDetail, fetchQuestions, fetchTeacherAssignments, updateAssignment } from '@/api/client'
+import { createAssignment, fetchQuestionDetail, fetchQuestions, fetchTeacherAssignments, freezeTeacherAssignment, updateAssignment } from '@/api/client'
 import type { Question, QuestionSummary } from '@/types/question'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import { useAuthStore } from '@/stores/auth'
 import { assignmentKindLabel, formatDate, formatDateTimeInput, sortAssignmentsByDeadlineDesc, statusTone, toApiDateTime } from '@/utils/format'
 
 const assignments = ref<Array<Record<string, unknown>>>([])
@@ -36,6 +37,7 @@ const creatorError = ref('')
 const editingError = ref('')
 const openStateFilter = ref('all')
 const router = useRouter()
+const auth = useAuthStore()
 const selectedCount = computed(() => selectedQuestions.value.length)
 const openStateFilters = [{ label: '全部', value: 'all' }, { label: '全部开放', value: 'yes' }, { label: '部分开放', value: 'some' }, { label: '暂不开放', value: 'no' }]
 const filteredAssignments = computed(() => openStateFilter.value === 'all' ? assignments.value : assignments.value.filter((item) => String(item.open_state ?? 'no') === openStateFilter.value))
@@ -52,6 +54,16 @@ function timeLimitLabel(value: unknown) { const minutes = Number(value ?? 0); re
 function parseUsernames(value: string) { return [...new Set(value.replaceAll('，', ',').replaceAll('\n', ',').split(',').map((item) => item.trim()).filter(Boolean))] }
 function viewStatistics(id: string) { void router.push({ name: 'teacher-assignment-statistics', params: { id } }) }
 function openMakeup(item: Record<string, unknown>) { void router.push({ name: 'teacher-assignment-makeups', params: { id: String(item.id) } }) }
+async function deleteAssignment(item: Record<string, unknown>) {
+  if (!window.confirm(`确定删除作业“${item.title}”吗？可由管理员在冻结管理中恢复。`)) return
+  try {
+    await freezeTeacherAssignment(String(item.id))
+    success.value = '作业已删除，可由管理员在冻结管理中恢复。'
+    await load()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '删除作业失败。'
+  }
+}
 function openEdit(item: Record<string, unknown>) { editing.value = { ...item, deadline: formatDateTimeInput(item.deadline), allow_answer_view: Boolean(item.allow_answer_view) }; editingTargetUsernames.value = Array.isArray(item.target_usernames) ? item.target_usernames.join('\n') : ''; editingError.value = '' }
 async function openPreview() {
   const targets = parseUsernames(targetUsernames.value)
@@ -87,7 +99,7 @@ onMounted(() => void load())
       <div class="picker-heading"><strong>选择题目</strong><label class="compact-search"><input v-model="keyword" placeholder="搜索题目名称或知识点" @change="loadQuestions" @keyup.enter="loadQuestions" /></label></div><div v-if="!keyword.trim()" class="question-picker-hint">请输入题目名称或知识点后搜索。</div><div v-else-if="questionLoading" class="question-picker-hint">正在搜索题目…</div><div v-else-if="!questions.length" class="question-picker-hint">没有找到匹配的题目。</div><div v-else class="question-picker"><label v-for="question in questions" :key="question.id" class="picker-item"><input v-model="selectedQuestions" type="checkbox" :value="question.title" /><span><strong>{{ question.title }}</strong><small>{{ question.type }} · 难度 {{ question.difficulty ?? '未设置' }} · 知识点 {{ question.point_titles?.length ? question.point_titles.join('、') : '未关联' }}</small></span></label></div><button type="button" :disabled="creating || previewLoading" @click="openPreview">{{ previewLoading ? '正在准备预览…' : '预览题目并继续' }}</button>
     </section>
     <div v-if="loading" class="loading-state">正在加载作业…</div>
-    <section v-else class="content-card flush-card"><div v-if="filteredAssignments.length" class="assignment-table teacher-table"><div class="assignment-table-head"><span>作业</span><span>截止时间</span><span>答题时长</span><span>开放情况</span><span>操作</span></div><article v-for="item in filteredAssignments" :key="String(item.id)" class="assignment-table-row"><div class="assignment-title-cell"><strong>{{ item.title }}</strong><small>{{ assignmentKindLabel(item.assignment_kind) }}</small></div><span class="assignment-deadline-cell">{{ formatDate(item.deadline, '不限') }}</span><span class="assignment-time-cell">{{ timeLimitLabel(item.time_limit) }}</span><StatusBadge class="assignment-status-cell" :label="item.status === 'published' ? '已发布' : String(item.status ?? '草稿')" :tone="statusTone(String(item.status ?? ''))" /><div class="row-actions assignment-action-cell"><button class="small-button secondary-button" type="button" @click="openEdit(item)">设置</button><button class="small-button" type="button" @click="viewStatistics(String(item.id))">查看统计</button><button class="small-button secondary-button" type="button" @click="openMakeup(item)">补交开放</button></div></article></div><EmptyState v-else title="还没有布置作业" description="请切换开放情况筛选或创建新的作业。" /></section>
+    <section v-else class="content-card flush-card"><div v-if="filteredAssignments.length" class="assignment-table teacher-table"><div class="assignment-table-head"><span>作业</span><span>截止时间</span><span>答题时长</span><span>开放情况</span><span>操作</span></div><article v-for="item in filteredAssignments" :key="String(item.id)" class="assignment-table-row"><div class="assignment-title-cell"><strong>{{ item.title }}</strong><small>{{ assignmentKindLabel(item.assignment_kind) }}</small></div><span class="assignment-deadline-cell">{{ formatDate(item.deadline, '不限') }}</span><span class="assignment-time-cell">{{ timeLimitLabel(item.time_limit) }}</span><StatusBadge class="assignment-status-cell" :label="item.status === 'published' ? '已发布' : String(item.status ?? '草稿')" :tone="statusTone(String(item.status ?? ''))" /><div class="row-actions assignment-action-cell"><button class="small-button secondary-button" type="button" @click="openEdit(item)">设置</button><button class="small-button" type="button" @click="viewStatistics(String(item.id))">查看统计</button><button class="small-button secondary-button" type="button" @click="openMakeup(item)">补交开放</button><button v-if="item.owner_username === auth.user.value?.username" class="small-button danger-button" type="button" @click="deleteAssignment(item)">删除</button></div></article></div><EmptyState v-else title="还没有布置作业" description="请切换开放情况筛选或创建新的作业。" /></section>
     <div v-if="editing" class="modal-backdrop"><section class="modal-card"><div class="section-heading"><h3>调整作业设置</h3><button class="icon-button" type="button" aria-label="关闭" @click="editing = null">×</button></div><InlineMessage :message="editingError" tone="error" /><label>截止时间<input v-model="editing.deadline" type="datetime-local" step="60" lang="zh-CN" /></label><label>答题时长<select v-model.number="editing.time_limit"><option :value="0">不限时</option><option :value="20">20 分钟</option><option :value="30">30 分钟</option><option :value="60">60 分钟</option></select></label><label>开放范围<select v-model="editing.open_state"><option value="yes">全部学生</option><option value="some">指定学生</option><option value="no">关闭</option></select></label><label v-if="editing.open_state === 'some'">指定学生<textarea v-model="editingTargetUsernames" rows="3"></textarea></label><label class="checkbox-field"><input v-model="editing.allow_answer_view" type="checkbox" />允许学生查看标准答案及解析</label><div class="modal-actions"><button class="secondary-button" type="button" @click="editing = null">取消</button><button type="button" @click="saveEdit">保存设置</button></div></section></div>
     <div v-if="showPreview" class="modal-backdrop assignment-preview-backdrop" @click.self="showPreview = false"><section class="modal-card assignment-preview-modal" role="dialog" aria-modal="true" aria-labelledby="assignment-preview-title"><div class="section-heading"><div><h3 id="assignment-preview-title">发布前预览</h3><p>{{ title }} · 共 {{ previewQuestions.length }} 道题。此处仅供核对，不会保存作业。</p></div><button class="icon-button" type="button" aria-label="关闭预览" :disabled="creating" @click="showPreview = false">×</button></div><div class="assignment-preview-list"><article v-for="(question, index) in previewQuestions" :key="question.id" class="assignment-preview-item"><header><div><strong>第 {{ index + 1 }} 题：{{ question.title }}</strong><span>{{ question.type }} · 难度 {{ question.difficulty ?? '未设置' }}<template v-if="question.point_titles.length"> · {{ question.point_titles.join('、') }}</template></span></div></header><div class="assignment-preview-content">{{ question.content || '（暂无题干内容）' }}</div></article></div><div class="modal-actions"><button class="secondary-button" type="button" :disabled="creating" @click="showPreview = false">返回修改</button><button type="button" :disabled="creating" @click="create">{{ creating ? '正在发布…' : '确认并发布作业' }}</button></div></section></div>
   </div>

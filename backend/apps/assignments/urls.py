@@ -1,12 +1,13 @@
 from django.urls import path
 
-from .views import assignment_detail, create_assignment, create_exam, create_mock, generate_paper, student_assignments, teacher_assignments, teacher_makeup_windows, update_assignment, update_makeup_window
+from .views import assignment_detail, create_assignment, create_exam, create_mock, freeze_teacher_assignment, generate_paper, student_assignments, teacher_assignments, teacher_makeup_windows, update_assignment, update_makeup_window
 
 
 urlpatterns = [
     path("student/me/assignments", student_assignments, name="student-assignments"),
     path("assignments/<str:assignment_id>", assignment_detail, name="assignment-detail"),
     path("teacher/assignments", teacher_assignments, name="teacher-assignments"),
+    path("teacher/assignments/<str:assignment_id>/freeze", freeze_teacher_assignment, name="teacher-assignment-freeze"),
     path("teacher/assignments/<str:assignment_id>/makeup-windows", teacher_makeup_windows, name="assignment-makeup-windows"),
     path("teacher/assignments/create", create_assignment, name="assignment-create"),
     path("teacher/assignments/<str:assignment_id>/makeup-windows/<str:window_id>", update_makeup_window, name="assignment-makeup-window-update"),

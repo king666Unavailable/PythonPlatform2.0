@@ -230,6 +230,7 @@ class MySQLStudentMasteryRepository:
                 INNER JOIN assignment_items ai ON ai.assignment_id=s.assignment_id AND ai.position=g.question_position
                 WHERE s.student_username=%s
                   AND s.status='graded'
+                  AND a.frozen_at IS NULL
                   AND g.status='graded'
                   AND g.score IS NOT NULL
                   AND ai.question_id IS NOT NULL

@@ -49,7 +49,8 @@ class TeacherClassRepository:
                    INNER JOIN classes_teacher tc ON tc.class_id=c.id
                       AND tc.teacher_username=%s AND tc.is_active=1
                    LEFT JOIN classes_student sc ON sc.class_id=c.id
-                   WHERE c.is_active=1
+                   INNER JOIN user_teachers t ON t.username=tc.teacher_username AND t.is_active=1 AND t.frozen_at IS NULL
+                   WHERE c.is_active=1 AND c.frozen_at IS NULL
                    GROUP BY c.id,c.title,c.teaching_class,c.academic_year,c.is_active
                    ORDER BY c.academic_year DESC,c.id DESC""",
                 (teacher_username,),
@@ -58,6 +59,18 @@ class TeacherClassRepository:
 
     def get_owned_class(self, teacher_username: str, class_id: str) -> dict[str, Any] | None:
         return next((item for item in self.list_owned_classes(teacher_username) if item["id"] == str(class_id)), None)
+
+    def freeze_assignment(self, assignment_id: str, teacher_username: str, class_id: str) -> bool:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """UPDATE assignments SET frozen_at=NOW()
+                   WHERE id=%s AND frozen_at IS NULL
+                     AND owner_username=%s AND (class_id=%s OR class_id IS NULL)""",
+                (assignment_id, teacher_username, class_id),
+            )
+            changed = cursor.rowcount > 0
+        self.connection.commit()
+        return changed
 
     def find_existing(self, title: str, teaching_class: str, academic_year: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:

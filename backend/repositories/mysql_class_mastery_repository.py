@@ -301,6 +301,7 @@ class MySQLClassMasteryRepository:
                    AND cs.class_id=%s
                    AND cs.is_active=1
                 WHERE s.status='graded' AND g.status='graded' AND g.score IS NOT NULL
+                  AND a.frozen_at IS NULL
                   AND ai.question_id IS NOT NULL
                   AND (
                       a.class_id=%s

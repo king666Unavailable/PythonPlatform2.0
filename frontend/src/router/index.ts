@@ -43,6 +43,7 @@ const routes = [
       { path: 'admin', name: 'admin-home', component: () => import('@/views/admin/AdminHomeView.vue'), meta: { roles: ['admin'], title: '平台概览' } },
       { path: 'admin/accounts', name: 'admin-accounts', component: () => import('@/views/admin/AdminAccountsView.vue'), meta: { roles: ['admin'], title: '账号管理' } },
       { path: 'admin/classes', name: 'admin-classes', component: () => import('@/views/admin/AdminClassesView.vue'), meta: { roles: ['admin'], title: '教学班管理' } },
+      { path: 'admin/frozen', name: 'admin-frozen', component: () => import('@/views/admin/AdminFrozenView.vue'), meta: { roles: ['admin'], title: '冻结管理' } },
       { path: 'admin/audit', name: 'admin-audit', component: () => import('@/views/admin/AdminAuditView.vue'), meta: { roles: ['admin'], title: '操作记录' } },
       { path: 'admin/features', name: 'admin-features', component: () => import('@/views/admin/AdminFeatureVisibilityView.vue'), meta: { roles: ['admin'], title: '功能配置' } },
     ],

@@ -73,13 +73,13 @@ class LearningRepository:
         return self.get_assignment(assignment_id) or {**assignment, "questions": question_titles}
 
     def list_assignments(self, owner_username: str | None = None, class_id: str | None = None) -> list[dict[str, Any]]:
-        query = "SELECT * FROM assignments"
+        query = "SELECT * FROM assignments WHERE frozen_at IS NULL"
         params: tuple[Any, ...] = ()
         if owner_username is not None:
-            query += " WHERE (owner_username=%s OR owner_username='')"
+            query += " AND (owner_username=%s OR owner_username='')"
             params = (owner_username,)
         if class_id and class_id != "all":
-            query += " AND (class_id=%s OR class_id IS NULL)" if owner_username is not None else " WHERE (class_id=%s OR class_id IS NULL)"
+            query += " AND (class_id=%s OR class_id IS NULL)"
             params += (class_id,)
         query += " ORDER BY updated_at DESC, title"
         with self.connection.cursor() as cursor:
@@ -89,7 +89,7 @@ class LearningRepository:
 
     def get_assignment(self, assignment_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM assignments WHERE id=%s LIMIT 1", (assignment_id,))
+            cursor.execute("SELECT * FROM assignments WHERE id=%s AND frozen_at IS NULL LIMIT 1", (assignment_id,))
             row = cursor.fetchone()
         return self._assignment_row(row) if row else None
 
@@ -289,9 +289,9 @@ class LearningRepository:
         if class_id and class_id != "all":
             clauses.append("(a.class_id=%s OR a.class_id IS NULL)")
             params.append(class_id)
+        clauses.append("(a.frozen_at IS NULL OR a.id IS NULL)")
         query = "SELECT s.*, a.title AS assignment_title FROM submissions s LEFT JOIN assignments a ON a.id=s.assignment_id"
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
+        query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY s.updated_at DESC"
         with self.connection.cursor() as cursor:
             cursor.execute(query, tuple(params))
@@ -306,7 +306,12 @@ class LearningRepository:
 
     def get_submission(self, submission_id: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT * FROM submissions WHERE id=%s LIMIT 1", (submission_id,))
+            cursor.execute(
+                """SELECT s.* FROM submissions s
+                   INNER JOIN assignments a ON a.id=s.assignment_id AND a.frozen_at IS NULL
+                   WHERE s.id=%s LIMIT 1""",
+                (submission_id,),
+            )
             row = cursor.fetchone()
         if not row:
             return None
@@ -537,7 +542,7 @@ class LearningRepository:
 
     def assignment_statistics(self, assignment_id: str, owner_username: str | None = None, class_id: str | None = None) -> dict[str, Any]:
         with self.connection.cursor() as cursor:
-            clauses = ["id=%s"]
+            clauses = ["id=%s", "frozen_at IS NULL"]
             params: list[Any] = [assignment_id]
             if owner_username is not None:
                 clauses.append("(owner_username=%s OR owner_username='')")
@@ -902,17 +907,23 @@ class LearningRepository:
             conditions.append("(action LIKE %s OR action LIKE %s)")
             parameters.extend(["assignment.%", "submission.%"])
         elif category == "account":
-            conditions.append("(action LIKE %s OR action IN (%s, %s, %s))")
-            parameters.extend(["account.%", "class.members.update", "class.student.create", "class.students.import"])
+            conditions.append("(action LIKE %s OR action IN (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s))")
+            parameters.extend([
+                "account.%", "class.create", "class.update", "class.members.update", "class.student.create", "class.students.import",
+                "student.freeze", "teacher.freeze", "class.freeze",
+                "student.restore", "teacher.restore", "class.restore",
+            ])
         elif category == "other":
             conditions.append(
                 "action NOT IN (%s, %s, %s, %s) AND action NOT LIKE %s AND action NOT LIKE %s "
-                "AND action NOT LIKE %s AND action NOT IN (%s, %s, %s)"
+                "AND action NOT LIKE %s AND action NOT IN (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
             )
             parameters.extend([
                 "student.login.success", "teacher.login.success", "admin.login.success", "logout.manual",
                 "assignment.%", "submission.%", "account.%",
-                "class.members.update", "class.student.create", "class.students.import",
+                "class.create", "class.update", "class.members.update", "class.student.create", "class.students.import",
+                "student.freeze", "teacher.freeze", "class.freeze",
+                "student.restore", "teacher.restore", "class.restore",
             ])
 
         # Teacher-facing audit queries are scoped to students actively enrolled
@@ -948,7 +959,10 @@ class LearningRepository:
             )
             parameters.extend(["student.login.success", "logout.manual", "submission.%", student_class_id, student_class_id])
 
-        if action_filter:
+        if action_filter == "delete":
+            conditions.append("action IN (%s, %s, %s, %s)")
+            parameters.extend(["student.freeze", "teacher.freeze", "class.freeze", "assignment.freeze"])
+        elif action_filter:
             conditions.append("action = %s")
             parameters.append(action_filter)
 
@@ -1085,6 +1099,83 @@ class LearningRepository:
                         title = titles.get(int(assignment_id))
                         if title:
                             detail["assignment_title"] = title
+
+            # Older class-update audit rows keep the class ID in resource_id,
+            # but may not have captured the class name. Enrich the response
+            # from MySQL while preserving any values recorded in the event.
+            class_ids = {
+                str(record.get("resource_id") or "")
+                for record in records
+                if record.get("action") == "class.update"
+                and isinstance(record.get("detail"), dict)
+                and not isinstance(record["detail"].get("audit_object"), dict)
+                and str(record.get("resource_id") or "").isdigit()
+            }
+            if class_ids:
+                placeholders = ", ".join(["%s"] * len(class_ids))
+                cursor.execute(
+                    f"SELECT id, title, teaching_class, academic_year FROM classes WHERE id IN ({placeholders})",
+                    tuple(class_ids),
+                )
+                class_details = {str(row["id"]): row for row in cursor.fetchall()}
+                for record in records:
+                    if record.get("action") != "class.update" or not isinstance(record.get("detail"), dict):
+                        continue
+                    detail = record["detail"]
+                    if isinstance(detail.get("audit_object"), dict):
+                        continue
+                    row = class_details.get(str(record.get("resource_id") or ""))
+                    if not row:
+                        continue
+                    detail["audit_object"] = {
+                        "title": detail.get("title") or row.get("title") or "",
+                        "teaching_class": detail.get("teaching_class") or row.get("teaching_class") or "",
+                        "academic_year": detail.get("academic_year") or row.get("academic_year") or "",
+                    }
+
+            # Older member-change records store only usernames. Enrich them
+            # with names for display; new records carry name snapshots already.
+            member_usernames: dict[str, set[str]] = {"student": set(), "teacher": set()}
+            for record in records:
+                detail = record.get("detail")
+                if record.get("action") != "class.members.update" or not isinstance(detail, dict):
+                    continue
+                role = str(detail.get("role") or "")
+                if role not in member_usernames:
+                    continue
+                for key in ("added", "removed"):
+                    people_key = f"{key}_people"
+                    if isinstance(detail.get(people_key), list):
+                        continue
+                    values = detail.get(key)
+                    if isinstance(values, list):
+                        member_usernames[role].update(str(value).strip() for value in values if str(value).strip())
+            for role, table in (("student", "user_students"), ("teacher", "user_teachers")):
+                usernames = member_usernames[role]
+                if not usernames:
+                    continue
+                placeholders = ", ".join(["%s"] * len(usernames))
+                cursor.execute(
+                    f"SELECT username,name FROM {table} WHERE username IN ({placeholders})",
+                    tuple(usernames),
+                )
+                names = {str(row["username"]): str(row.get("name") or "") for row in cursor.fetchall()}
+                for record in records:
+                    detail = record.get("detail")
+                    if record.get("action") != "class.members.update" or not isinstance(detail, dict):
+                        continue
+                    if str(detail.get("role") or "") != role:
+                        continue
+                    for key in ("added", "removed"):
+                        people_key = f"{key}_people"
+                        if isinstance(detail.get(people_key), list):
+                            continue
+                        values = detail.get(key)
+                        if isinstance(values, list):
+                            detail[people_key] = [
+                                {"username": str(value), "name": names.get(str(value), "")}
+                                for value in values
+                            ]
         if include_total:
             return {"items": records, "total": total or 0}
         return records

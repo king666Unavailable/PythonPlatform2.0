@@ -46,7 +46,7 @@ class MySQLStudentProfileRepository:
                 SELECT id, username, name, gender, study_class, stu_classify,
                        test_num, test_right_num, is_active
                 FROM user_students
-                WHERE username=%s
+                WHERE username=%s AND frozen_at IS NULL
                 LIMIT 1
                 """,
                 (username,),
@@ -57,7 +57,7 @@ class MySQLStudentProfileRepository:
 
             assignment_sql = """SELECT id, title, assignment_kind, open_state,
                        target_usernames_json, status, created_at, deadline
-                FROM assignments WHERE status IN ('published', 'active', '')"""
+                FROM assignments WHERE frozen_at IS NULL AND status IN ('published', 'active', '')"""
             assignment_params: tuple[Any, ...] = ()
             if class_id and class_id != "all":
                 assignment_sql += " AND (class_id=%s OR (class_id IS NULL AND (owner_username='' OR owner_username IN (SELECT teacher_username FROM classes_teacher WHERE class_id=%s AND is_active=1))))"
@@ -71,7 +71,8 @@ class MySQLStudentProfileRepository:
                 cursor.execute(
                     """SELECT c.teaching_class FROM classes c
                        INNER JOIN classes_student sc ON sc.class_id=c.id
-                       WHERE sc.student_username=%s AND sc.class_id=%s AND sc.is_active=1 LIMIT 1""",
+                       WHERE sc.student_username=%s AND sc.class_id=%s AND sc.is_active=1
+                         AND c.is_active=1 AND c.frozen_at IS NULL LIMIT 1""",
                     (username, class_id),
                 )
                 selected_class = cursor.fetchone()

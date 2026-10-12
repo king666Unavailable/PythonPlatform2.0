@@ -32,12 +32,17 @@ class ClassContextRepository:
     def list_for_user(self, username: str, role: str) -> list[dict]:
         relation = "classes_teacher" if role == "teacher" else "classes_student"
         field = "teacher_username" if role == "teacher" else "student_username"
+        account = "user_teachers" if role == "teacher" else "user_students"
+        account_alias = "u"
         enrollment = "'' AS enrollment_type" if role == "teacher" else "sc.enrollment_type"
         join = f"JOIN {relation} sc ON sc.class_id=c.id AND sc.{field}=%s AND sc.is_active=1"
         with self.connection.cursor() as cursor:
             cursor.execute(
                 f"""SELECT c.id,c.title,c.teaching_class,c.academic_year,c.teacher_name,c.graph_class_id,{enrollment}
-                    FROM classes c {join} WHERE c.is_active=1 ORDER BY c.academic_year DESC,c.id DESC""",
+                    FROM classes c {join}
+                    INNER JOIN {account} {account_alias} ON {account_alias}.username=sc.{field}
+                    WHERE c.is_active=1 AND c.frozen_at IS NULL AND {account_alias}.frozen_at IS NULL
+                    ORDER BY c.academic_year DESC,c.id DESC""",
                 (username,),
             )
             return [self._row(row) for row in cursor.fetchall()]
@@ -82,11 +87,15 @@ class ClassContextRepository:
 
     def student_usernames(self, class_id: str) -> tuple[str, ...]:
         with self.connection.cursor() as cursor:
-            cursor.execute("SELECT student_username FROM classes_student WHERE class_id=%s AND is_active=1", (class_id,))
+            cursor.execute("""SELECT cs.student_username FROM classes_student cs
+                              INNER JOIN user_students s ON s.username=cs.student_username AND s.frozen_at IS NULL
+                              WHERE cs.class_id=%s AND cs.is_active=1""", (class_id,))
             return tuple(str(row["student_username"]) for row in cursor.fetchall())
 
     def teacher_usernames(self, class_id: str) -> tuple[str, ...]:
         with self.connection.cursor() as cursor:
+            # Keep frozen teachers' usernames in the class ownership set so their
+            # existing class_id-less assignments remain available to students.
             cursor.execute("SELECT teacher_username FROM classes_teacher WHERE class_id=%s AND is_active=1", (class_id,))
             return tuple(str(row["teacher_username"]) for row in cursor.fetchall())
 
@@ -100,7 +109,7 @@ class ClassContextRepository:
             cursor.execute(
                 f"""SELECT s.id,s.username FROM classes_student sc
                    INNER JOIN user_students s ON s.username=sc.student_username
-                   WHERE sc.class_id=%s AND sc.is_active=1
+                   WHERE sc.class_id=%s AND sc.is_active=1 AND s.frozen_at IS NULL
                      AND (s.username IN ({placeholders}) OR CAST(s.id AS CHAR) IN ({placeholders}))""",
                 (class_id, *tokens, *tokens),
             )
@@ -130,7 +139,7 @@ class ClassContextRepository:
             cursor.execute(
                 """SELECT 1 FROM classes_student sc
                    INNER JOIN user_students s ON s.username=sc.student_username
-                   WHERE sc.class_id=%s AND sc.is_active=1
+                   WHERE sc.class_id=%s AND sc.is_active=1 AND s.frozen_at IS NULL
                      AND (s.username=%s OR CAST(s.id AS CHAR)=%s)
                    LIMIT 1""",
                 (class_id, str(identifier), str(identifier)),

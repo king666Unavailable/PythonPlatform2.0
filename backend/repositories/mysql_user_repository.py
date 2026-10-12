@@ -47,7 +47,7 @@ class MySQLUserRepository:
             f"""
             SELECT id, username, password_hash, name
             FROM user_teachers
-            WHERE username = %s {' ' if include_inactive else 'AND is_active = 1'}
+            WHERE username = %s {'AND frozen_at IS NULL' if include_inactive else 'AND is_active = 1 AND frozen_at IS NULL'}
             LIMIT 1
             """,
             username,
@@ -65,7 +65,7 @@ class MySQLUserRepository:
             f"""
             SELECT id, username, password_hash, name, study_class
             FROM user_students
-            WHERE username = %s {' ' if include_inactive else 'AND is_active = 1'}
+            WHERE username = %s {'AND frozen_at IS NULL' if include_inactive else 'AND is_active = 1 AND frozen_at IS NULL'}
             LIMIT 1
             """,
             username,
@@ -89,7 +89,7 @@ class MySQLUserRepository:
             """
             SELECT id, username, password_hash, name, study_class
             FROM user_students
-            WHERE username = %s AND is_active = 1
+            WHERE username = %s AND is_active = 1 AND frozen_at IS NULL
             LIMIT 1
             """,
             username,
@@ -162,7 +162,8 @@ class MySQLUserRepository:
                        GROUP_CONCAT(DISTINCT CAST(c.id AS CHAR) ORDER BY c.id SEPARATOR ',') AS relation_class_ids
                 FROM user_students s
                 LEFT JOIN classes_student sc ON sc.student_username=s.username AND sc.is_active=1
-                LEFT JOIN classes c ON c.id=sc.class_id AND c.is_active=1
+                LEFT JOIN classes c ON c.id=sc.class_id AND c.is_active=1 AND c.frozen_at IS NULL
+                WHERE s.frozen_at IS NULL
                 GROUP BY s.id,s.username,s.name,s.gender,s.study_class,s.stu_classify,s.test_num,s.test_right_num,s.is_active
                 ORDER BY username
                 """
@@ -197,7 +198,8 @@ class MySQLUserRepository:
                        GROUP_CONCAT(DISTINCT CAST(c.id AS CHAR) ORDER BY c.id SEPARATOR ',') AS relation_class_ids
                 FROM user_teachers t
                 LEFT JOIN classes_teacher tc ON tc.teacher_username=t.username AND tc.is_active=1
-                LEFT JOIN classes c ON c.id=tc.class_id AND c.is_active=1
+                LEFT JOIN classes c ON c.id=tc.class_id AND c.is_active=1 AND c.frozen_at IS NULL
+                WHERE t.frozen_at IS NULL
                 GROUP BY t.id,t.username,t.name,t.is_active,t.created_at,t.updated_at
                 ORDER BY t.username
                 """
@@ -254,8 +256,19 @@ class MySQLUserRepository:
         if not table:
             return False
         with self.connection.cursor() as cursor:
-            cursor.execute(f"SELECT 1 FROM {table} WHERE username=%s LIMIT 1", (username,))
+            cursor.execute(
+                f"SELECT 1 FROM {table} WHERE username=%s" + (" AND frozen_at IS NULL" if role in {"teacher", "student"} else "") + " LIMIT 1",
+                (username,),
+            )
             return cursor.fetchone() is not None
+
+    def username_is_frozen(self, username: str) -> bool:
+        with self.connection.cursor() as cursor:
+            for table in ("user_teachers", "user_students"):
+                cursor.execute(f"SELECT 1 FROM {table} WHERE username=%s AND frozen_at IS NOT NULL LIMIT 1", (username,))
+                if cursor.fetchone():
+                    return True
+        return False
 
     def update_profile(self, role: str, username: str, data: dict[str, Any]) -> bool:
         """Update editable account profile fields without changing identity keys."""

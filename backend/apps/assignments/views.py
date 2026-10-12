@@ -10,6 +10,7 @@ from api.permissions import IsStudent, IsTeacher, session_user
 from apps.context.services import current_class_id
 from repositories.learning_repository import LearningRepository
 from repositories.mysql_question_repository import MySQLQuestionRepository
+from repositories.teacher_class_repository import TeacherClassRepository
 from repositories.question_repository import QuestionQuery
 
 from .services import AssignmentNotFound, AssignmentService, AssignmentUnavailable
@@ -109,6 +110,24 @@ def teacher_assignments(request):
     except AssignmentUnavailable:
         return _error("作业数据源暂不可用。", "ASSIGNMENT_BACKEND_UNAVAILABLE", status.HTTP_503_SERVICE_UNAVAILABLE)
     return Response({"items": items, "meta": {"total": len(items)}})
+
+
+@api_view(["POST"])
+@permission_classes([IsTeacher])
+def freeze_teacher_assignment(request, assignment_id: str):
+    user = session_user(request)
+    class_id = current_class_id(request)
+    with LearningRepository() as repository:
+        assignment = repository.get_assignment(assignment_id)
+    if not assignment or assignment.get("owner_username") != user["username"] or assignment.get("class_id") not in (None, str(class_id)):
+        return _error("作业不存在、已删除或不属于当前教师和教学班。", "ASSIGNMENT_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+    with TeacherClassRepository() as repository:
+        changed = repository.freeze_assignment(assignment_id, user["username"], class_id)
+    if not changed:
+        return _error("作业不存在、已删除或不属于当前教师和教学班。", "ASSIGNMENT_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+    with LearningRepository() as repository:
+        repository.write_audit(user, "assignment.freeze", "assignments", assignment_id, {"frozen": True, "title": assignment.get("title", "")})
+    return Response({"frozen": True, "id": assignment_id})
 
 
 @api_view(["GET", "POST"])

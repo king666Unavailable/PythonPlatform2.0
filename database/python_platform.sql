@@ -124,6 +124,7 @@ CREATE TABLE `assignments`  (
   `class_id` bigint UNSIGNED NULL DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `frozen_at` datetime NULL DEFAULT NULL COMMENT '冻结时间；NULL表示未冻结',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_assignments_title`(`title` ASC) USING BTREE,
   INDEX `idx_assignments_owner`(`owner_username` ASC) USING BTREE,
@@ -175,6 +176,7 @@ CREATE TABLE `classes`  (
   `graph_class_id` bigint UNSIGNED NULL DEFAULT NULL,
   `teacher_name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT '',
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `frozen_at` datetime NULL DEFAULT NULL COMMENT '冻结时间；NULL表示未冻结',
   PRIMARY KEY (`id`) USING BTREE,
   INDEX `idx_classes_title_teaching_class`(`title` ASC, `teaching_class` ASC) USING BTREE,
   INDEX `idx_classes_graph_class_id`(`graph_class_id` ASC) USING BTREE
@@ -518,6 +520,7 @@ CREATE TABLE `user_students`  (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `frozen_at` datetime NULL DEFAULT NULL COMMENT '冻结时间；NULL表示未冻结',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uq_user_students_username`(`username` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 526 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
@@ -534,6 +537,7 @@ CREATE TABLE `user_teachers`  (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `frozen_at` datetime NULL DEFAULT NULL COMMENT '冻结时间；NULL表示未冻结',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE INDEX `uq_user_teachers_username`(`username` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;

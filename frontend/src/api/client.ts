@@ -518,6 +518,27 @@ export function updateAdminClassMembers(classId: string, role: string, usernames
   return request<{ result: Record<string, unknown>; members: Record<string, Array<Record<string, unknown>>> }>(`/api/v1/admin/classes/${encodeURIComponent(classId)}/members`, { method: 'POST', body: JSON.stringify({ role, usernames }) })
 }
 
+export function fetchFrozenItems(filters: { type?: string; q?: string } = {}) {
+  const params = new URLSearchParams()
+  if (filters.type && filters.type !== 'all') params.set('type', filters.type)
+  if (filters.q?.trim()) params.set('q', filters.q.trim())
+  return request<{ items: Array<Record<string, unknown>>; meta: { total: number } }>(`/api/v1/admin/frozen?${params.toString()}`)
+}
+
+export function freezeAdminEntity(entityType: string, id: string, confirmLastTeacher = false) {
+  return request<{ frozen: boolean; id: string }>(`/api/v1/admin/frozen/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}`, {
+    method: 'POST', body: JSON.stringify({ confirm_last_teacher: confirmLastTeacher }),
+  })
+}
+
+export function restoreFrozenEntity(entityType: string, id: string) {
+  return request<{ restored: boolean; id: string }>(`/api/v1/admin/frozen/${encodeURIComponent(entityType)}/${encodeURIComponent(id)}/restore`, { method: 'POST', body: '{}' })
+}
+
+export function freezeTeacherAssignment(assignmentId: string) {
+  return request<{ frozen: boolean; id: string }>(`/api/v1/teacher/assignments/${encodeURIComponent(assignmentId)}/freeze`, { method: 'POST', body: '{}' })
+}
+
 export async function previewAdminAccountImport(file: File, teachingClass: string) {
   await ensureCsrfToken()
   const csrfCookie = document.cookie.split('; ').find((cookie) => cookie.startsWith('csrftoken='))?.split('=')[1]

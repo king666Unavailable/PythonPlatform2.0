@@ -236,7 +236,7 @@ class MySQLClassAnalyticsRepository:
 
     def find_students(self, class_id: str) -> tuple[ClassStudent, ...]:
         # Account status controls login only. Teachers retain historical visibility.
-        clauses = ["COALESCE(s.stu_classify, '') <> ''"]
+        clauses = ["COALESCE(s.stu_classify, '') <> ''", "s.frozen_at IS NULL"]
         params: list[object] = []
         join = ""
         if class_id != "all":
@@ -305,7 +305,7 @@ class MySQLClassAnalyticsRepository:
                       AND g.score IS NOT NULL
                     GROUP BY s.student_username
                 ) r ON r.student_username=s.username
-                WHERE s.username=%s OR CAST(s.id AS CHAR)=%s
+                WHERE (s.username=%s OR CAST(s.id AS CHAR)=%s) AND s.frozen_at IS NULL
                 LIMIT 1
                 """,
                 (student_id, student_id),
@@ -325,7 +325,7 @@ class MySQLClassAnalyticsRepository:
         )
 
     def list_assignments(self, owner_username: str = "", class_id: str | None = None) -> list[dict]:
-        clauses = ["status IN ('published', 'active', '')"]
+        clauses = ["status IN ('published', 'active', '')", "frozen_at IS NULL"]
         params: list[object] = []
         if owner_username:
             clauses.append("owner_username=%s")
@@ -428,7 +428,9 @@ class MySQLClassAnalyticsRepository:
         """List this teacher's current-class submissions with unfinished grades."""
         page = max(1, int(page))
         page_size = min(max(1, int(page_size)), 100)
-        scope = """a.owner_username=%s AND (a.class_id=%s OR a.class_id IS NULL)
+        scope = """a.frozen_at IS NULL AND s.student_username IN
+                    (SELECT username FROM user_students WHERE frozen_at IS NULL)
+                    AND a.owner_username=%s AND (a.class_id=%s OR a.class_id IS NULL)
                     AND cs.class_id=%s AND cs.is_active=1"""
         pending = """(
             s.status IN ('grading', 'grading_unavailable')
@@ -514,7 +516,7 @@ class MySQLClassAnalyticsRepository:
                 student_username = str(identity["student_username"])
             cursor.execute(
                 """SELECT id, title FROM assignments
-                   WHERE id=%s AND owner_username=%s
+                   WHERE id=%s AND frozen_at IS NULL AND owner_username=%s
                      AND (class_id=%s OR class_id IS NULL)
                    LIMIT 1""",
                 (assignment_id, teacher_username, class_id),
@@ -628,7 +630,7 @@ class MySQLClassAnalyticsRepository:
             with self.connection.cursor() as cursor:
                 cursor.execute(
                     """SELECT id, title FROM assignments
-                       WHERE id=%s AND owner_username=%s
+                       WHERE id=%s AND frozen_at IS NULL AND owner_username=%s
                          AND (class_id=%s OR class_id IS NULL)
                        LIMIT 1 FOR UPDATE""",
                     (assignment_id, teacher_username, class_id),

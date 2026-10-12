@@ -62,6 +62,7 @@ const adminGroups: NavigationGroup[] = [
       { id: 'admin-home', label: '平台概览', icon: 'home', to: '/admin' },
       { id: 'admin-accounts', label: '账号管理', icon: 'account', to: '/admin/accounts' },
       { id: 'admin-classes', label: '教学班管理', icon: 'class', to: '/admin/classes' },
+      { id: 'admin-frozen', label: '冻结管理', icon: 'settings', to: '/admin/frozen' },
       { id: 'admin-audit', label: '操作记录', icon: 'audit', to: '/admin/audit' },
       { id: 'admin-feature-settings', label: '功能配置', icon: 'settings', to: '/admin/features' },
     ],

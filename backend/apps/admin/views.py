@@ -1,5 +1,6 @@
 """Administrator account, permission and audit APIs (F24/F25)."""
 
+import logging
 import uuid
 from datetime import datetime, timedelta
 
@@ -11,11 +12,13 @@ from rest_framework.response import Response
 
 from api.permissions import IsAdmin, session_user
 from repositories.admin_class_repository import AdminClassRepository
+from repositories.freeze_management_repository import FreezeManagementRepository
 from repositories.learning_repository import LearningRepository
 from repositories.mysql_user_repository import MySQLUserRepository
 
 
 _PENDING_IMPORTS: dict[str, list[dict]] = {}
+logger = logging.getLogger(__name__)
 
 
 def _error(message: str, code: str, code_status: int):
@@ -120,6 +123,9 @@ def create_account(request):
     username = str(request.data.get("username", "")).strip()
     if role not in {"admin", "teacher", "student"} or not username:
         return _error("账号角色和用户名不能为空。", "ACCOUNT_INVALID", status.HTTP_400_BAD_REQUEST)
+    with MySQLUserRepository() as repository:
+        if repository.username_is_frozen(username):
+            return _error("该用户名对应的账号已删除（可恢复），请前往冻结管理恢复，不能重复创建。", "ACCOUNT_FROZEN", status.HTTP_409_CONFLICT)
     class_ids = request.data.get("class_ids", [])
     if class_ids is None:
         class_ids = []
@@ -270,6 +276,7 @@ def import_accounts_preview(request):
                 if not name: row_errors.append("姓名不能为空")
                 if gender not in gender_codes: row_errors.append("性别只能填写男、女或其他")
                 if username in seen: row_errors.append("文件内用户名重复")
+                elif username and repository.username_is_frozen(username): row_errors.append("该账号已删除，可在冻结管理中恢复，不能重复创建")
                 elif username and repository.username_exists(username): row_errors.append("用户名已存在")
                 seen.add(username)
                 if row_errors:
@@ -381,6 +388,72 @@ def classes(request):
     return Response({"items": items, "meta": {"total": len(items), "teachers": teachers, "students": students, "graph_classes": graph_classes}})
 
 
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def frozen_items(request):
+    entity_type = request.query_params.get("type", "all")
+    if entity_type not in {"all", "student", "teacher", "class", "assignment"}:
+        return _error("对象类型无效。", "FROZEN_TYPE_INVALID", status.HTTP_400_BAD_REQUEST)
+    keyword = request.query_params.get("q", "").strip()
+    with FreezeManagementRepository() as repository:
+        items = repository.list_frozen(entity_type, keyword)
+    return Response({"items": items, "meta": {"total": len(items)}})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def freeze_entity(request, entity_type: str, identifier: str):
+    if entity_type not in {"student", "teacher", "class"}:
+        return _error("该对象暂不支持此操作。", "FREEZE_TYPE_INVALID", status.HTTP_400_BAD_REQUEST)
+    if entity_type == "teacher":
+        with FreezeManagementRepository() as repository:
+            last_teacher_classes = repository.teacher_last_teacher_classes(identifier)
+        if last_teacher_classes and request.data.get("confirm_last_teacher") is not True:
+            class_labels = []
+            for item in last_teacher_classes:
+                label = item["teaching_class"]
+                if item["academic_year"]:
+                    label = f"{label}（{item['academic_year']}）"
+                class_labels.append(label)
+            class_names = "、".join(class_labels)
+            return Response({
+                "message": f"该教师是以下教学班唯一的启用教师：{class_names}。删除后班级和作业仍保留，但将没有可用教师。是否继续？",
+                "code": "LAST_TEACHER_WARNING",
+                "classes": last_teacher_classes,
+            }, status=status.HTTP_409_CONFLICT)
+    with FreezeManagementRepository() as repository:
+        details = repository.get_object(entity_type, identifier)
+        changed = repository.set_frozen(entity_type, identifier, True)
+    if not changed:
+        return _error("对象不存在或已删除。", "FREEZE_TARGET_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+    table = {"student": "user_students", "teacher": "user_teachers", "class": "classes"}[entity_type]
+    try:
+        with LearningRepository() as audit:
+            audit.write_audit(session_user(request), f"{entity_type}.freeze", table, identifier, {"frozen": True, **(details or {})})
+    except Exception:
+        logger.exception("freeze_audit_failed", extra={"entity_type": entity_type, "identifier": identifier})
+    return Response({"frozen": True, "entity_type": entity_type, "id": identifier})
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def restore_frozen_entity(request, entity_type: str, identifier: str):
+    if entity_type not in FreezeManagementRepository.TABLES:
+        return _error("对象类型无效。", "FROZEN_TYPE_INVALID", status.HTTP_400_BAD_REQUEST)
+    with FreezeManagementRepository() as repository:
+        details = repository.get_object(entity_type, identifier)
+        changed = repository.set_frozen(entity_type, identifier, False)
+    if not changed:
+        return _error("未找到该删除对象，或对象已经恢复。", "FROZEN_TARGET_NOT_FOUND", status.HTTP_404_NOT_FOUND)
+    table = FreezeManagementRepository.TABLES[entity_type][0]
+    try:
+        with LearningRepository() as audit:
+            audit.write_audit(session_user(request), f"{entity_type}.restore", table, identifier, {"frozen": False, **(details or {})})
+    except Exception:
+        logger.exception("restore_audit_failed", extra={"entity_type": entity_type, "identifier": identifier})
+    return Response({"restored": True, "entity_type": entity_type, "id": identifier})
+
+
 @api_view(["POST"])
 @permission_classes([IsAdmin])
 def create_class(request):
@@ -450,7 +523,20 @@ def update_class(request, class_id: str):
         repository.update_class(class_id, update_data)
         item = repository.get_class(class_id)
     with LearningRepository() as audit:
-        audit.write_audit(session_user(request), "class.update", "classes", class_id, update_data)
+        audit.write_audit(
+            session_user(request),
+            "class.update",
+            "classes",
+            class_id,
+            {
+                **update_data,
+                "audit_object": {
+                    "title": str(item.get("title") or ""),
+                    "teaching_class": str(item.get("teaching_class") or ""),
+                    "academic_year": str(item.get("academic_year") or ""),
+                },
+            },
+        )
     return Response({"class": item})
 
 
@@ -476,8 +562,21 @@ def class_members(request, class_id: str):
             return _error("教学班不存在。", "CLASS_NOT_FOUND", status.HTTP_404_NOT_FOUND)
         result = repository.replace_members(class_id, role, usernames)
         members = repository.list_members(class_id)
+        changed_usernames = [*result["added"], *result["removed"]]
+        changed_names = repository.account_names(role, changed_usernames) if not result["invalid"] else {}
     if result["invalid"]:
         return Response({"message": "部分账号不存在或已停用。", "code": "CLASS_MEMBER_INVALID", "result": result, "members": members}, status=status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as audit:
-        audit.write_audit(session_user(request), "class.members.update", "classes", class_id, {"role": role, **result})
+        audit.write_audit(
+            session_user(request),
+            "class.members.update",
+            "classes",
+            class_id,
+            {
+                "role": role,
+                **result,
+                "added_people": [{"username": username, "name": changed_names.get(username, "")} for username in result["added"]],
+                "removed_people": [{"username": username, "name": changed_names.get(username, "")} for username in result["removed"]],
+            },
+        )
     return Response({"result": result, "members": members})

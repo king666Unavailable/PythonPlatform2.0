@@ -104,20 +104,23 @@ const actionLabels: Record<string, string> = {
   'submission.grade.manual_update': '调整分数',
   'question.update': '修改题目', 'question.create': '新增题目', 'question.batch_create': '批量新增题目',
   'account.create': '创建账号', 'account.update': '修改账号', 'account.import': '批量导入账号',
+  'student.freeze': '删除学生账号', 'teacher.freeze': '删除教师账号', 'student.restore': '恢复学生账号', 'teacher.restore': '恢复教师账号',
   'class.create': '创建教学班', 'class.update': '修改教学班', 'class.members.update': '调整班级成员',
+  'class.freeze': '删除教学班', 'class.restore': '恢复教学班',
   'class.student.create': '添加学生', 'class.students.import': '批量导入学生',
   'assignment.create': '创建作业', 'assignment.update': '调整作业',
+  'assignment.freeze': '删除作业', 'assignment.restore': '恢复作业',
   'assignment.makeup_window.create': '新增补交机会', 'assignment.makeup_window.update': '调整补交机会',
   'knowledge.create': '新增知识节点', 'ai.approve': '审核通过 AI 题目', 'navigation.visibility.update': '调整功能显示',
 }
 const actionGroups: Record<string, string[]> = {
   login: ['student.login.success', 'teacher.login.success', 'admin.login.success', 'logout.manual'],
   assignment: [
-    'assignment.create', 'assignment.update', 'assignment.makeup_window.create', 'assignment.makeup_window.update', 'submission.create', 'submission.grade.manual_update',
+    'assignment.create', 'assignment.update', 'assignment.freeze', 'assignment.restore', 'assignment.makeup_window.create', 'assignment.makeup_window.update', 'submission.create', 'submission.grade.manual_update',
   ],
   account: [
     'account.create', 'account.update', 'account.import', 'class.create', 'class.update', 'class.members.update',
-    'class.student.create', 'class.students.import',
+    'class.student.create', 'class.students.import', 'student.freeze', 'teacher.freeze', 'student.restore', 'teacher.restore', 'class.freeze', 'class.restore',
   ],
   other: ['question.create', 'question.update', 'question.batch_create', 'knowledge.create', 'ai.approve', 'navigation.visibility.update'],
 }
@@ -125,11 +128,16 @@ const actionOptionLabels: Record<string, string> = {
   'student.login.success': '学生登录成功',
   'teacher.login.success': '教师登录成功',
   'admin.login.success': '管理员登录成功',
+  delete: '删除操作',
 }
 const hiddenActionFilters = new Set(['navigation.visibility.update'])
 const actionOptions = computed(() => {
   const actions = category.value === 'all' ? Object.keys(actionLabels) : actionGroups[category.value] || []
-  return actions
+  const canFilterDeletes = ['all', 'account', 'assignment'].includes(category.value)
+  return [
+    ...(canFilterDeletes ? ['delete'] : []),
+    ...actions,
+  ]
     .map((value) => ({ value, label: actionOptionLabels[value] || actionLabels[value] }))
     .filter((item) => item.label && !hiddenActionFilters.has(item.value))
 })
@@ -206,6 +214,22 @@ function formatGradeScore(value: unknown) {
   const score = Number(value)
   return Number.isFinite(score) ? String(Number(score.toFixed(2))) : text(value) || '未知'
 }
+function changedMembers(detail: Record<string, unknown>, key: 'added' | 'removed') {
+  const people = detail[`${key}_people`]
+  if (Array.isArray(people)) {
+    return people.map((value) => {
+      if (value && typeof value === 'object') {
+        const person = value as Record<string, unknown>
+        const username = text(person.username)
+        const name = text(person.name)
+        return name && username ? `${name}（${username}）` : name || username
+      }
+      return text(value)
+    }).filter(Boolean)
+  }
+  const usernames = detail[key]
+  return Array.isArray(usernames) ? usernames.map(text).filter(Boolean) : []
+}
 function manualGradeChanges(detail: Record<string, unknown>) {
   if (!Array.isArray(detail.changes)) return ''
   return detail.changes
@@ -231,7 +255,13 @@ function displayObject(log: Record<string, unknown>) {
   if (action.startsWith('submission.')) return title ? `作业「${title}」` : '作业已失效'
   if (action.startsWith('account.')) return action === 'account.import' ? `${roleLabel(log.resource_type)}账号批量导入` : `${roleLabel(log.resource_type)}账号「${text(log.resource_id)}」`
   if (action === 'class.create') return teachingClass ? `教学班「${teachingClass}」` : '新教学班'
-  if (action === 'class.update') return teachingClass ? `教学班「${teachingClass}」` : '教学班设置'
+  if (action === 'class.update') {
+    const snapshot = detail.audit_object && typeof detail.audit_object === 'object'
+      ? detail.audit_object as Record<string, unknown>
+      : detail
+    const target = text(snapshot.teaching_class)
+    return target ? `教学班「${target}」` : '教学班设置'
+  }
   if (action === 'class.members.update') return `${roleLabel(detail.role)}成员名单`
   if (action === 'class.student.create' || action === 'class.students.import') {
     const target = classDescription(detail.class)
@@ -266,6 +296,12 @@ function describeLog(log: Record<string, unknown>) {
     return `创建了${roleLabel(log.resource_type)}账号${classes ? `，关联 ${classes} 个教学班` : ''}。`
   }
   if (action === 'account.update') return `修改了${roleLabel(log.resource_type)}账号「${text(log.resource_id)}」：${accountChangeSummary(detail)}`
+  if (action === 'student.freeze' || action === 'teacher.freeze') return `删除了${action.startsWith('teacher') ? '教师' : '学生'}账号「${text(log.resource_id)}」，账号数据与教学班关系保留，可在冻结管理恢复。`
+  if (action === 'student.restore' || action === 'teacher.restore') return `恢复了${action.startsWith('teacher') ? '教师' : '学生'}账号「${text(log.resource_id)}」，原启用状态和关系均未改变。`
+  if (action === 'class.freeze') return `删除了教学班「${text(detail.teaching_class) || text(log.resource_id)}」，班级关系及相关作业数据保留。`
+  if (action === 'class.restore') return `恢复了教学班「${text(detail.teaching_class) || text(log.resource_id)}」。`
+  if (action === 'assignment.freeze') return `删除了作业「${title || text(log.resource_id)}」，提交和成绩数据保留。`
+  if (action === 'assignment.restore') return `恢复了作业「${title || text(log.resource_id)}」。`
   if (action === 'account.import') {
     const students = importedStudents(detail)
     const target = text(detail.teaching_class)
@@ -279,8 +315,9 @@ function describeLog(log: Record<string, unknown>) {
   }
   if (action === 'class.update') return `更新了教学班信息${fieldNames(Object.keys(detail)) ? `：${fieldNames(Object.keys(detail))}` : ''}。`
   if (action === 'class.members.update') {
-    const added = countOf(detail.added); const removed = countOf(detail.removed)
-    return `调整了${roleLabel(detail.role)}成员：新增 ${added} 人，移除 ${removed} 人。`
+    const added = changedMembers(detail, 'added')
+    const removed = changedMembers(detail, 'removed')
+    return `调整了${roleLabel(detail.role)}成员：新增 ${added.length ? added.join('、') : '无'}；移除 ${removed.length ? removed.join('、') : '无'}。`
   }
   if (action === 'class.students.import') {
     const students = importedStudents(detail)

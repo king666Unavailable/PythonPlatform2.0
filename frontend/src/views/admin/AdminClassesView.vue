@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { createAdminClass, fetchAdminClasses, fetchAdminClassMembers, updateAdminClass, updateAdminClassMembers } from '@/api/client'
+import { createAdminClass, fetchAdminClasses, fetchAdminClassMembers, freezeAdminEntity, updateAdminClass, updateAdminClassMembers } from '@/api/client'
 import EmptyState from '@/components/feedback/EmptyState.vue'
 import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import PageHeader from '@/components/ui/PageHeader.vue'
@@ -109,6 +109,22 @@ async function toggle(item: Record<string, unknown>) {
   }
 }
 
+async function deleteClass(item: Record<string, unknown>) {
+  const name = String(item.teaching_class || item.title || item.id)
+  if (!window.confirm(`确定删除教学班“${name}”吗？可在冻结管理中恢复。`)) return
+  working.value = true
+  error.value = ''
+  try {
+    await freezeAdminEntity('class', String(item.id))
+    success.value = '教学班已删除，可在冻结管理中恢复。'
+    await load()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '删除教学班失败。'
+  } finally {
+    working.value = false
+  }
+}
+
 function openClassEdit(item: Record<string, unknown>) {
   classEditTarget.value = item
   classEditTitle.value = String(item.title || '')
@@ -205,7 +221,7 @@ onMounted(() => void load())
           <div><strong>{{ item.teaching_class || '未命名教学班' }}</strong><small>{{ item.title || '未填写课程名称' }}</small></div>
           <span>{{ item.academic_year || '—' }}</span><span>{{ item.graph_class_title || '未配置' }}</span><span>{{ item.teacher_count ?? 0 }} 人</span><span>{{ item.student_count ?? 0 }} 人</span>
           <StatusBadge :label="item.is_active ? '启用' : '未开放'" :tone="item.is_active ? 'green' : 'red'" />
-          <div class="row-actions"><button class="small-button secondary-button" type="button" @click="openClassEdit(item)">修改</button><button class="small-button secondary-button" type="button" @click="openMembers(item)">管理成员</button><button class="small-button" type="button" @click="toggle(item)">{{ item.is_active ? '停用' : '启用' }}</button></div>
+          <div class="row-actions"><button class="small-button secondary-button" type="button" @click="openClassEdit(item)">修改</button><button class="small-button secondary-button" type="button" @click="openMembers(item)">管理成员</button><button class="small-button" type="button" @click="toggle(item)">{{ item.is_active ? '停用' : '启用' }}</button><button class="small-button danger-button" type="button" :disabled="working" @click="deleteClass(item)">删除</button></div>
         </article>
       </div>
       <EmptyState v-else title="暂无教学班" description="可以先创建一个教学班。" />

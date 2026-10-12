@@ -71,7 +71,7 @@ class MySQLLearningProfileRepository:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """SELECT username, name, gender, study_class, is_active
-                   FROM user_students WHERE username=%s LIMIT 1""",
+                   FROM user_students WHERE username=%s AND frozen_at IS NULL LIMIT 1""",
                 (username,),
             )
             student = cursor.fetchone()
@@ -150,7 +150,7 @@ class MySQLLearningProfileRepository:
         cursor.execute(
             """SELECT id, title, assignment_kind, deadline, open_state, target_usernames_json
                FROM assignments
-               WHERE status IN ('published','active','')
+               WHERE frozen_at IS NULL AND status IN ('published','active','')
                  AND (class_id=%s OR (class_id IS NULL AND (owner_username='' OR owner_username IN (
                        SELECT teacher_username FROM classes_teacher WHERE class_id=%s AND is_active=1))))
                ORDER BY COALESCE(NULLIF(deadline,''),'0000-00-00') DESC, id DESC""",
@@ -217,7 +217,8 @@ class MySQLLearningProfileRepository:
     def _classmates(cursor, class_id: str) -> list[str]:
         cursor.execute(
             """SELECT student_username FROM classes_student
-               WHERE class_id=%s AND is_active=1""",
+               WHERE class_id=%s AND is_active=1
+                 AND student_username IN (SELECT username FROM user_students WHERE frozen_at IS NULL)""",
             (class_id,),
         )
         return [str(row["student_username"]) for row in cursor.fetchall()]
