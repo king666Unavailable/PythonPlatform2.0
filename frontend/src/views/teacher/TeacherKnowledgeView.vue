@@ -2,6 +2,8 @@
 import { DataSet, Network } from 'vis-network/standalone/esm/vis-network'
 import 'vis-network/styles/vis-network.min.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
+import { compareThemeTitles } from '@/utils/themeOrder'
 import {
   createKnowledgeNode,
   deleteKnowledgeNode,
@@ -45,6 +47,22 @@ const saving = ref(false)
 
 const nodeMap = computed(() => new Map(nodes.value.map((node) => [node.id, node])))
 const selectedNode = computed(() => nodeMap.value.get(selectedId.value) ?? null)
+function isNodeWithin(node: KnowledgeManagementNode, ancestorId: string) {
+  let parentId = node.parent_id
+  while (parentId) {
+    if (parentId === ancestorId) return true
+    parentId = nodeMap.value.get(parentId)?.parent_id ?? null
+  }
+  return false
+}
+const linkedPointTitles = computed(() => {
+  const selected = selectedNode.value
+  if (!selected) return []
+  if (selected.type === 'point') return [selected.title]
+  return [...new Set(nodes.value
+    .filter((node) => node.type === 'point' && isNodeWithin(node, selected.id))
+    .map((node) => node.title))]
+})
 const parentOptions = computed(() => {
   if (formType.value === 'class') return []
   const required = parentType[formType.value]
@@ -91,7 +109,13 @@ const treeRows = computed(() => {
     children.set(key, group)
   }
   const order: Record<NodeType, number> = { class: 0, theme: 1, knowledge: 2, point: 3 }
-  const sortNodes = (items: KnowledgeManagementNode[]) => items.sort((a, b) => (order[a.type] - order[b.type]) || a.title.localeCompare(b.title, 'zh-CN'))
+  const sortNodes = (items: KnowledgeManagementNode[]) => items.sort((a, b) => {
+    const typeOrder = order[a.type] - order[b.type]
+    if (typeOrder !== 0) return typeOrder
+    return a.type === 'theme' && b.type === 'theme'
+      ? compareThemeTitles(a.title, b.title, a.sort_order, b.sort_order)
+      : a.title.localeCompare(b.title, 'zh-CN')
+  })
   const rows: Array<KnowledgeManagementNode & { depth: number }> = []
   function visit(node: KnowledgeManagementNode, depth: number) {
     rows.push({ ...node, depth })
@@ -343,7 +367,7 @@ onBeforeUnmount(() => network?.destroy())
         <div v-if="detailLoading" class="loading-state">正在加载节点详情…</div>
         <template v-else-if="selectedNode">
           <div class="section-heading"><div><span class="knowledge-type-badge" :class="`knowledge-type-${selectedNode.type}`">{{ typeLabel(selectedNode.type) }}</span><h3>{{ selectedNode.title }}</h3></div><div class="row-actions"><button class="small-button secondary-button" type="button" @click="openEdit">编辑节点</button><button class="small-button danger-button" type="button" @click="removeNode">删除节点</button></div></div>
-          <div class="knowledge-management-stats"><div><span>关联题目</span><strong>{{ detailNode?.question_count ?? selectedNode.question_count }} 道</strong></div><div><span>下级节点</span><strong>{{ detailNode?.children_count ?? selectedNode.children_count }} 个</strong></div><div><span>父级节点</span><strong>{{ selectedNode.parent_id ? (nodeMap.get(selectedNode.parent_id)?.title ?? '已关联') : '顶层节点' }}</strong></div></div>
+          <div class="knowledge-management-stats"><RouterLink v-if="linkedPointTitles.length" class="knowledge-management-stat-link" :to="{ name: 'teacher-question-bank', query: { points: linkedPointTitles } }"><span>关联题目 <span aria-hidden="true">↗</span></span><strong>{{ detailNode?.question_count ?? selectedNode.question_count }} 道</strong><small>点击查看题目</small></RouterLink><div v-else><span>关联题目</span><strong>{{ detailNode?.question_count ?? selectedNode.question_count }} 道</strong></div><div><span>下级节点</span><strong>{{ detailNode?.children_count ?? selectedNode.children_count }} 个</strong></div><div><span>父级节点</span><strong>{{ selectedNode.parent_id ? (nodeMap.get(selectedNode.parent_id)?.title ?? '已关联') : '顶层节点' }}</strong></div></div>
           <div class="knowledge-management-detail-section"><h4>下级节点</h4><div v-if="detailNode?.children?.length" class="knowledge-management-children"><button v-for="child in detailNode.children" :key="child.id" type="button" @click="selectNode(child)"><span>{{ child.title }}</span><small>{{ typeLabel(child.type) }} · {{ child.question_count }} 题</small></button></div><span v-else class="muted">暂无下级节点。</span></div>
           <div class="knowledge-management-detail-note">节点结构与关系由 Neo4j 维护；关联题目数量用于删除影响提示，不在此处修改题目内容。</div>
         </template>

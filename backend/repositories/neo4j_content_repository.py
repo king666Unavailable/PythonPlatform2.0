@@ -78,9 +78,11 @@ class Neo4jContentRepository:
                 MATCH (course)-[:include*0..3]->(scoped)
                 WITH collect(DISTINCT scoped) AS scoped_nodes
                 UNWIND scoped_nodes AS parent
-                MATCH (parent)-[:include]->(child)
+                MATCH (parent)-[relation:include]->(child)
                 WHERE child IN scoped_nodes
-                RETURN toString(parent.uid) AS source, toString(child.uid) AS target
+                RETURN toString(parent.uid) AS source,
+                       toString(child.uid) AS target,
+                       relation.sort_order AS sort_order
                 ORDER BY source, target
                 """,
                  graph_class_uid=str(graph_class_uid),
@@ -95,11 +97,14 @@ class Neo4jContentRepository:
         node_types = {str(row["id"]): str(row["node_type"]) for row in node_records}
         parent_by_child: dict[str, dict[str, str]] = {}
         children_by_parent: dict[str, list[str]] = {}
+        theme_sort_order_by_node: dict[str, int] = {}
         for edge in edge_records:
             parent_id = str(edge["source"])
             child_id = str(edge["target"])
             parent_by_child[child_id] = {"type": node_types.get(parent_id, ""), "id": parent_id}
             children_by_parent.setdefault(parent_id, []).append(child_id)
+            if node_types.get(parent_id) == "class" and node_types.get(child_id) == "theme" and edge.get("sort_order") is not None:
+                theme_sort_order_by_node[child_id] = int(edge["sort_order"])
 
         # Build one question-ID union per node from the leaves upward.  This
         # keeps the API count-only while ensuring a question linked to several
@@ -125,13 +130,25 @@ class Neo4jContentRepository:
                     "type": str(row["node_type"]),
                     "level": int(row["level"]),
                     "properties": dict(row.get("properties") or {}),
+                    "sort_order": theme_sort_order_by_node.get(node_id),
                     "parent_type": parent_by_child.get(node_id, {}).get("type"),
                     "parent_id": parent_by_child.get(node_id, {}).get("id"),
                     "children_count": len(children_by_parent.get(node_id, [])),
                     "question_count": len(question_ids_by_node.get(node_id, set())),
                 }
             )
-        return {"nodes": nodes, "edges": [{"source": str(row["source"]), "target": str(row["target"]), "relation": "include"} for row in edge_records]}
+        return {
+            "nodes": nodes,
+            "edges": [
+                {
+                    "source": str(row["source"]),
+                    "target": str(row["target"]),
+                    "relation": "include",
+                    "sort_order": row.get("sort_order"),
+                }
+                for row in edge_records
+            ],
+        }
 
     def get_management_node(self, node_id: str, graph_class_uid: str | None = None, graph_class_id: str | None = None) -> dict[str, Any] | None:
         structure = self.fetch_management_structure(graph_class_uid, graph_class_id)

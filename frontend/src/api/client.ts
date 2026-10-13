@@ -372,6 +372,7 @@ export interface KnowledgeManagementNode {
   title: string
   type: 'class' | 'theme' | 'knowledge' | 'point'
   level: number
+  sort_order?: number | null
   properties: Record<string, unknown>
   parent_type: 'class' | 'theme' | 'knowledge' | null
   parent_id: string | null

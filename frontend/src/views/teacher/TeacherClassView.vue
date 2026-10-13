@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { compareThemeTitles } from '@/utils/themeOrder'
 import { useRoute } from 'vue-router'
 import { fetchClassAnalytics, fetchClassAlertPreferences, fetchTeacherAssignmentStudentGrades, fetchTeacherClassMastery, fetchTeacherStudentProfile, refreshTeacherClassMastery, saveClassAlertPreferences, saveTeacherAssignmentStudentGrades } from '@/api/client'
 import type { ClassAlertRules } from '@/api/client'
@@ -333,7 +334,13 @@ const masteryTreeRows = computed(() => {
     }
   }
   const order = { class: 0, theme: 1, knowledge: 2, point: 3 }
-  const sortNodes = (items: ClassMasteryNode[]) => items.sort((a, b) => (order[a.node_type] - order[b.node_type]) || a.title.localeCompare(b.title, 'zh-CN'))
+  const sortNodes = (items: ClassMasteryNode[]) => items.sort((a, b) => {
+    const typeOrder = order[a.node_type] - order[b.node_type]
+    if (typeOrder !== 0) return typeOrder
+    return a.node_type === 'theme' && b.node_type === 'theme'
+      ? compareThemeTitles(a.title, b.title, a.sort_order, b.sort_order)
+      : a.title.localeCompare(b.title, 'zh-CN')
+  })
   const rows: Array<ClassMasteryNode & { depth: number }> = []
   function visit(node: ClassMasteryNode, depth: number) {
     rows.push({ ...node, depth })

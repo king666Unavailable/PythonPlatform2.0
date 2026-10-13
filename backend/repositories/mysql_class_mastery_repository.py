@@ -162,7 +162,7 @@ class MySQLClassMasteryRepository:
         members: list[dict[str, Any]],
         mastery_rows: list[dict[str, Any]],
     ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], list[dict[str, Any]]]]:
-        metadata, parents, question_counts = self._graph_nodes(graph_class_id)
+        metadata, parents, question_counts, theme_sort_order = self._graph_nodes(graph_class_id)
         by_key: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
         for row in mastery_rows:
             by_key[(str(row["node_type"]), str(row["node_id"]))].append(row)
@@ -214,6 +214,7 @@ class MySQLClassMasteryRepository:
                     "type_label": TYPE_LABELS.get(node_type, node_type),
                     "parent_type": parent[0] if parent else None,
                     "parent_id": parent[1] if parent else None,
+                    "sort_order": theme_sort_order.get(node_id) if node_type == "theme" else None,
                     "mastery_score": _round(sum(scores) / len(scores)) if scores else None,
                     "accuracy_score": _round(sum(accuracies) / len(accuracies)) if accuracies else None,
                     "covered_student_count": covered_students,
@@ -223,18 +224,31 @@ class MySQLClassMasteryRepository:
                 }
             )
 
-        nodes.sort(key=lambda item: (NODE_TYPES.index(item["node_type"]), item["title"], item["node_id"]))
+        nodes.sort(
+            key=lambda item: (
+                NODE_TYPES.index(item["node_type"]),
+                item["sort_order"] if item["node_type"] == "theme" and item["sort_order"] is not None else 32768,
+                item["title"],
+                item["node_id"],
+            )
+        )
         return nodes, by_key
 
     def _graph_nodes(
         self,
         graph_class_id: str | None,
-    ) -> tuple[dict[tuple[str, str], dict[str, Any]], dict[tuple[str, str], tuple[str, str]], dict[tuple[str, str], int]]:
+    ) -> tuple[
+        dict[tuple[str, str], dict[str, Any]],
+        dict[tuple[str, str], tuple[str, str]],
+        dict[tuple[str, str], int],
+        dict[str, int],
+    ]:
         metadata: dict[tuple[str, str], dict[str, Any]] = {}
         parents: dict[tuple[str, str], tuple[str, str]] = {}
         question_counts: dict[tuple[str, str], int] = defaultdict(int)
+        theme_sort_order: dict[str, int] = {}
         if not graph_class_id:
-            return metadata, parents, dict(question_counts)
+            return metadata, parents, dict(question_counts), theme_sort_order
         with self.connection.cursor() as cursor:
             for node_type, table in (
                 ("class", "graph_classes"),
@@ -251,7 +265,7 @@ class MySQLClassMasteryRepository:
 
             cursor.execute(
                 """
-                SELECT source_label, source_id, target_label, target_id
+                SELECT source_label, source_id, target_label, target_id, sort_order
                 FROM graph_relationships r
                 WHERE (r.relation_type='include' AND r.source_label='Class' AND r.target_label='Theme' AND r.source_id=%s)
                    OR (r.relation_type='include' AND r.source_label='Theme' AND r.target_label='Knowledge'
@@ -265,6 +279,8 @@ class MySQLClassMasteryRepository:
                 source_type = {value: key for key, value in NODE_LABELS.items()}[row["source_label"]]
                 target_type = {value: key for key, value in NODE_LABELS.items()}[row["target_label"]]
                 parents[(target_type, str(row["target_id"]))] = (source_type, str(row["source_id"]))
+                if source_type == "class" and target_type == "theme" and row.get("sort_order") is not None:
+                    theme_sort_order[str(row["target_id"])] = int(row["sort_order"])
 
             cursor.execute(
                 """
@@ -283,7 +299,7 @@ class MySQLClassMasteryRepository:
         for child in ordered:
             parent = parents[child]
             question_counts[parent] += question_counts.get(child, 0)
-        return metadata, parents, dict(question_counts)
+        return metadata, parents, dict(question_counts), theme_sort_order
 
     def _answered_question_count(self, class_id: str) -> int:
         with self.connection.cursor() as cursor:

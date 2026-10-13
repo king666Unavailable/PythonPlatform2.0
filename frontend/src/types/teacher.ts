@@ -128,6 +128,7 @@ export interface ClassMasteryNode {
   type_label: string
   parent_type: 'class' | 'theme' | 'knowledge' | 'point' | null
   parent_id: string | null
+  sort_order?: number | null
   mastery_score: number | null
   accuracy_score: number | null
   covered_student_count: number

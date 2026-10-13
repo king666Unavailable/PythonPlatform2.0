@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { createQuestion, deleteQuestion, fetchKnowledgeNodes, fetchQuestion, fetchQuestions, updateQuestion } from '@/api/client'
 import type { QuestionSummary } from '@/types/question'
 import EmptyState from '@/components/feedback/EmptyState.vue'
@@ -35,6 +36,8 @@ interface ProgrammingConfig {
 }
 
 const questions = ref<QuestionSummary[]>([])
+const route = useRoute()
+const router = useRouter()
 const title = ref('')
 const typeCode = ref('1')
 const content = ref('')
@@ -46,6 +49,7 @@ const selectedPointUids = ref<string[]>([])
 const keyword = ref('')
 const typeFilter = ref('')
 const pointStatus = ref('')
+const pointFilterTitles = ref<string[]>([])
 const language = ref('python')
 const version = ref('latest')
 const filename = ref('main.py')
@@ -66,7 +70,7 @@ const error = ref('')
 const success = ref('')
 const isProgramming = computed(() => typeCode.value === '3' || typeCode.value === '4')
 const isFunctionMode = computed(() => executionMode.value === 'function' || executionMode.value === 'wrapped_body')
-const hasQuestionFilter = computed(() => Boolean(keyword.value.trim() || typeFilter.value || pointStatus.value))
+const hasQuestionFilter = computed(() => Boolean(keyword.value.trim() || typeFilter.value || pointStatus.value || pointFilterTitles.value.length))
 const filteredKnowledgePoints = computed(() => {
   const query = pointSearch.value.trim().toLowerCase()
   return knowledgePoints.value.filter((point) => !query || point.title.toLowerCase().includes(query))
@@ -162,10 +166,10 @@ async function load() {
   }
   loading.value = true
   try {
-    const firstPage = await fetchQuestions(filter, typeFilter.value, '', 1, 100, pointStatus.value)
+    const firstPage = await fetchQuestions(filter, typeFilter.value, '', 1, 100, pointStatus.value, pointFilterTitles.value)
     const totalPages = firstPage.pagination?.total_pages ?? 1
     const remainingPages = totalPages > 1
-      ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => fetchQuestions(filter, typeFilter.value, '', index + 2, 100, pointStatus.value)))
+      ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => fetchQuestions(filter, typeFilter.value, '', index + 2, 100, pointStatus.value, pointFilterTitles.value)))
       : []
     questions.value = [firstPage, ...remainingPages].flatMap((page) => page.items)
   } catch (cause) {
@@ -174,6 +178,21 @@ async function load() {
     loading.value = false
   }
 }
+function clearKnowledgeFilter() {
+  void router.replace({ query: { ...route.query, points: undefined } })
+}
+function routePointTitles(value: unknown) {
+  const values = Array.isArray(value) ? value : [value]
+  return [...new Set(values
+    .filter((item): item is string => typeof item === 'string')
+    .flatMap((item) => item.split(','))
+    .map((item) => item.trim())
+    .filter(Boolean))]
+}
+watch(() => route.query.points, (value) => {
+  pointFilterTitles.value = routePointTitles(value)
+  void load()
+}, { immediate: true })
 async function save() {
   const needsAnswer = !isProgramming.value && !answer.value.trim()
   if (!title.value.trim() || !content.value.trim() || needsAnswer) { error.value = isProgramming.value ? '请填写题目名称和题干。' : '请填写题目、题干和参考答案。'; return }
@@ -222,7 +241,7 @@ async function remove(question: QuestionSummary) {
   if (!window.confirm(`确定删除“${question.title}”吗？`)) return
   try { await deleteQuestion(question.id); success.value = '题目已删除。'; await load() } catch (cause) { error.value = cause instanceof Error ? cause.message : '题目删除失败。' }
 }
-onMounted(() => { loading.value = false; void loadKnowledgePoints() })
+onMounted(() => { void loadKnowledgePoints() })
 </script>
 
 <template>
@@ -249,7 +268,7 @@ onMounted(() => { loading.value = false; void loadKnowledgePoints() })
       </div>
       <button type="button" :disabled="saving" @click="save">{{ saving ? '保存中…' : editingId ? '保存修改' : '保存题目' }}</button>
     </section>
-    <section class="content-card flush-card question-list-card"><div class="section-heading padded-heading"><div><h3>题目列表</h3><p>{{ hasQuestionFilter ? `找到 ${questions.length} 道匹配题目。` : '请输入筛选条件后查看题目。' }}</p></div><form class="compact-search question-bank-search" @submit.prevent="load"><input v-model="keyword" placeholder="搜索题目名称、题干或知识点" /><select v-model="typeFilter" aria-label="题型筛选"><option value="">全部题型</option><option value="1">选择题</option><option value="2">填空题</option><option value="3">编程题</option><option value="4">程序填空题</option></select><select v-model="pointStatus" aria-label="知识点关联状态"><option value="">全部关联状态</option><option value="linked">已关联知识点</option><option value="unlinked">未关联知识点</option></select><button class="secondary-button" type="submit">搜索</button></form></div><div v-if="loading" class="loading-state">正在加载题库…</div><EmptyState v-else-if="!hasQuestionFilter" title="请输入筛选条件" description="输入题目名称、题干或选择题型后，搜索符合条件的全部题目。" /><div v-else-if="questions.length" class="question-table"><div class="question-table-head"><span>题目</span><span>题型</span><span>难度</span><span>知识点</span><span>操作</span></div><article v-for="question in questions" :key="question.id" class="question-table-row"><div><strong>{{ question.title }}</strong><small>{{ question.question_count }} 次练习 · 正确率 {{ question.rate ?? 0 }}%</small></div><StatusBadge :label="question.type" tone="blue" /><span>{{ question.difficulty ?? '—' }}</span><span class="muted">{{ question.point_titles.join('、') || '未关联' }}</span><div class="question-actions"><button class="small-button secondary-button" type="button" @click="edit(question)">修改</button><button class="small-button danger-button" type="button" @click="remove(question)">删除</button></div></article></div><EmptyState v-else title="没有匹配题目" description="请更换题目名称、题干、知识点或题型。" /></section>
+    <section class="content-card flush-card question-list-card"><div class="section-heading padded-heading"><div><h3>题目列表</h3><p>{{ hasQuestionFilter ? `找到 ${questions.length} 道匹配题目。` : '请输入筛选条件后查看题目。' }}</p></div><form class="compact-search question-bank-search" @submit.prevent="load"><input v-model="keyword" placeholder="搜索题目名称、题干或知识点" /><select v-model="typeFilter" aria-label="题型筛选"><option value="">全部题型</option><option value="1">选择题</option><option value="2">填空题</option><option value="3">编程题</option><option value="4">程序填空题</option></select><select v-model="pointStatus" aria-label="知识点关联状态"><option value="">全部关联状态</option><option value="linked">已关联知识点</option><option value="unlinked">未关联知识点</option></select><button class="secondary-button" type="submit">搜索</button></form></div><div v-if="pointFilterTitles.length" class="question-bank-point-filter"><span>知识点筛选：{{ pointFilterTitles.join('、') }}</span><button class="small-button secondary-button" type="button" @click="clearKnowledgeFilter">清除</button></div><div v-if="loading" class="loading-state">正在加载题库…</div><EmptyState v-else-if="!hasQuestionFilter" title="请输入筛选条件" description="输入题目名称、题干或选择题型后，搜索符合条件的全部题目。" /><div v-else-if="questions.length" class="question-table"><div class="question-table-head"><span>题目</span><span>题型</span><span>难度</span><span>知识点</span><span>操作</span></div><article v-for="question in questions" :key="question.id" class="question-table-row"><div><strong>{{ question.title }}</strong><small>{{ question.question_count }} 次练习 · 正确率 {{ question.rate ?? 0 }}%</small></div><StatusBadge :label="question.type" tone="blue" /><span>{{ question.difficulty ?? '—' }}</span><span class="muted">{{ question.point_titles.join('、') || '未关联' }}</span><div class="question-actions"><button class="small-button secondary-button" type="button" @click="edit(question)">修改</button><button class="small-button danger-button" type="button" @click="remove(question)">删除</button></div></article></div><EmptyState v-else title="没有匹配题目" description="请更换题目名称、题干、知识点或题型。" /></section>
     </div>
   </div>
 </template>
