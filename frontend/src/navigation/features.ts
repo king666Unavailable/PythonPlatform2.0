@@ -26,7 +26,7 @@ const studentGroups: NavigationGroup[] = [
   {
     label: '练习与答疑',
     items: [
-      { id: 'student-questions', label: '题目练习', icon: 'question', to: '/student/questions' },
+      { id: 'student-questions', label: '课程资源', icon: 'question', to: '/student/questions' },
       { id: 'student-mock', label: '模拟练习', icon: 'practice', to: '/student/mock' },
       { id: 'student-ai', label: 'AI 助教', icon: 'spark', to: '/student/ai' },
     ],

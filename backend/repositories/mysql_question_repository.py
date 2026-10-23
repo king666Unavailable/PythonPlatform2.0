@@ -110,6 +110,76 @@ class MySQLQuestionRepository:
             query,
         )
 
+    def list_ai_documents(self, graph_class_id: str) -> list[dict[str, Any]]:
+        """Load retrievable question material only from one graph's question bank."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT q.id, q.title, q.content, q.question_type, q.answer,
+                       q.analysis, q.difficulty,
+                       GROUP_CONCAT(DISTINCT p.title ORDER BY p.title SEPARATOR '||') AS point_titles,
+                       GROUP_CONCAT(DISTINCT refs.uid ORDER BY refs.uid SEPARATOR '||') AS point_uids,
+                       CONCAT('[', GROUP_CONCAT(DISTINCT JSON_OBJECT('uid', refs.uid, 'title', p.title)
+                               ORDER BY refs.uid SEPARATOR ','), ']') AS point_links_json
+                FROM graph_questions q
+                LEFT JOIN graph_relationships r
+                  ON r.target_id=q.id
+                 AND r.relation_type='relate'
+                 AND r.source_label='Point'
+                 AND r.target_label='Test'
+                LEFT JOIN graph_points p
+                  ON p.id=r.source_id
+                 AND p.graph_class_id=q.graph_class_id
+                LEFT JOIN graph_node_refs refs
+                  ON refs.new_id=p.id
+                 AND refs.label_name='Point'
+                WHERE q.graph_class_id=%s
+                GROUP BY q.id, q.title, q.content, q.question_type, q.answer,
+                         q.analysis, q.difficulty
+                ORDER BY q.id
+                """,
+                (graph_class_id,),
+            )
+            rows = cursor.fetchall()
+        documents = []
+        for row in rows:
+            try:
+                point_links = json.loads(row.get("point_links_json") or "[]")
+            except (TypeError, ValueError):
+                point_links = []
+            point_links = [item for item in point_links if isinstance(item, dict) and item.get("uid")]
+            documents.append({
+                "id": str(row["id"]),
+                "title": str(row.get("title") or ""),
+                "content": str(row.get("content") or ""),
+                "type_code": str(row.get("question_type") or ""),
+                "answer": str(row.get("answer") or ""),
+                "analysis": str(row.get("analysis") or ""),
+                "difficulty": row.get("difficulty"),
+                "point_titles": tuple(str(item.get("title") or "") for item in point_links if item.get("title")),
+                "point_uids": tuple(str(item["uid"]) for item in point_links),
+                "point_links": tuple(
+                    {"uid": str(item["uid"]), "title": str(item.get("title") or "")}
+                    for item in point_links
+                ),
+            })
+        return documents
+
+    def list_ai_point_titles(self, graph_class_id: str) -> dict[str, str]:
+        """Load stable UID-to-title mappings for points in one graph class."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT refs.uid, p.title
+                FROM graph_points p
+                INNER JOIN graph_node_refs refs
+                  ON refs.new_id=p.id AND refs.label_name='Point'
+                WHERE p.graph_class_id=%s AND refs.uid IS NOT NULL AND refs.uid<>''
+                """,
+                (graph_class_id,),
+            )
+            return {str(row["uid"]): str(row.get("title") or "未命名知识点") for row in cursor.fetchall()}
+
     def find_by_title(self, title: str) -> Question | None:
         return self._find("q.title=%s", title)
 

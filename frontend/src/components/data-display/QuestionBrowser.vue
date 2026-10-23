@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { fetchQuestionDetail, fetchQuestions } from '@/api/client'
 import type { Question, QuestionListResponse } from '@/types/question'
 import EmptyState from '@/components/feedback/EmptyState.vue'
@@ -7,6 +8,7 @@ import InlineMessage from '@/components/feedback/InlineMessage.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 
 withDefaults(defineProps<{ showSolution?: boolean }>(), { showSolution: false })
+const route = useRoute()
 const keyword = ref('')
 const typeCode = ref('')
 const results = ref<QuestionListResponse | null>(null)
@@ -21,6 +23,7 @@ async function loadQuestions() {
   try {
     results.value = await fetchQuestions(keyword.value, typeCode.value)
     selected.value = null
+    if (keyword.value && results.value.items.length) await openQuestion(results.value.items[0].id)
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '题目加载失败。'
   } finally {
@@ -40,7 +43,10 @@ async function openQuestion(id: string) {
   }
 }
 
-onMounted(() => void loadQuestions())
+watch(() => route.query.q, async (value) => {
+  if (typeof value === 'string' && value.trim()) keyword.value = value.trim()
+  await loadQuestions()
+}, { immediate: true })
 </script>
 
 <template>
@@ -52,7 +58,7 @@ onMounted(() => void loadQuestions())
     </form>
     <InlineMessage :message="error" tone="error" />
     <div v-if="results" class="question-browser-layout">
-      <div class="question-results">
+      <div class="question-results student-question-results">
         <div class="panel-heading-row"><strong>题目列表</strong><span>{{ results.pagination.total }} 道题</span></div>
         <button v-for="question in results.items" :key="question.id" type="button" class="question-result-item" :class="{ selected: selected?.id === question.id }" @click="openQuestion(question.id)">
           <strong>{{ question.title }}</strong>

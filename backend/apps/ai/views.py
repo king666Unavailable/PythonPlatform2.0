@@ -1,5 +1,8 @@
 """F22-F23 AI conversation and teacher generation APIs."""
 
+import json
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -7,8 +10,42 @@ from rest_framework.response import Response
 from api.permissions import IsStudent, IsTeacher, session_user
 from repositories.learning_repository import LearningRepository
 from repositories.mysql_question_repository import MySQLQuestionRepository
+from apps.context.services import CurrentClassService
 
+from .intent_catalog import append_unresolved_skill_gap
+from .retrieval import retrieve_student_context
 from .services import AIProviderNotConfigured, AIProviderUnavailable, AIService
+
+
+logger = logging.getLogger("ai")
+_RESPONSE_MARKER = "__python_platform_ai_response_v1__"
+
+
+def _assistant_payload(content: str, sources: list[dict], rag_status: str) -> str:
+    return json.dumps({_RESPONSE_MARKER: True, "content": content, "sources": sources, "rag_status": rag_status}, ensure_ascii=False)
+
+
+def _decode_message(message: dict) -> dict:
+    result = dict(message)
+    if result.get("role") != "assistant":
+        result["sources"] = []
+        return result
+    try:
+        payload = json.loads(str(result.get("content") or ""))
+    except (TypeError, ValueError):
+        payload = None
+    if isinstance(payload, dict) and payload.get(_RESPONSE_MARKER) is True:
+        result["content"] = str(payload.get("content") or "")
+        result["sources"] = payload.get("sources") if isinstance(payload.get("sources"), list) else []
+        result["rag_status"] = str(payload.get("rag_status") or "unknown")
+    else:
+        result["sources"] = []
+        result["rag_status"] = "unknown"
+    return result
+
+
+def _decode_conversation(conversation: dict) -> dict:
+    return {**conversation, "messages": [_decode_message(item) for item in conversation.get("messages", [])]}
 
 
 def _ai_error(exc: Exception):
@@ -28,29 +65,54 @@ def conversations(request):
         return Response({"items": repository.list_conversations(username)})
 
 
-@api_view(["GET", "POST"])
+@api_view(["GET", "POST", "PATCH"])
 @permission_classes([IsStudent])
 def conversation_messages(request, conversation_id: str):
     username = session_user(request)["username"]
     with LearningRepository() as repository:
+        if request.method == "PATCH":
+            title = str(request.data.get("title", "")).strip()
+            if not title:
+                return Response({"message": "会话名称不能为空。", "code": "TITLE_REQUIRED"}, status=status.HTTP_400_BAD_REQUEST)
+            if len(title) > 100:
+                return Response({"message": "会话名称不能超过 100 个字符。", "code": "TITLE_TOO_LONG"}, status=status.HTTP_400_BAD_REQUEST)
+            conversation = repository.update_conversation_title(conversation_id, username, title)
+            if not conversation:
+                return Response({"message": "会话不存在。", "code": "CONVERSATION_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"conversation": conversation})
         conversation = repository.get_conversation(conversation_id, username)
     if not conversation:
         return Response({"message": "会话不存在。", "code": "CONVERSATION_NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
     if request.method == "GET":
-        return Response({"conversation": conversation})
+        return Response({"conversation": _decode_conversation(conversation)})
     question = str(request.data.get("content", "")).strip()
     if not question:
         return Response({"message": "问题不能为空。", "code": "QUESTION_REQUIRED"}, status=status.HTTP_400_BAD_REQUEST)
     with LearningRepository() as repository:
         repository.add_message(conversation_id, "user", question)
+    retrieval = {"context": "", "sources": [], "weak_points": [], "rag_status": "unavailable"}
     try:
-        answer = AIService().answer(conversation["messages"], question)
+        current_class = CurrentClassService().require(request)
+        retrieval = retrieve_student_context(
+            username,
+            str(current_class["id"]),
+            current_class.get("graph_class_id"),
+            question,
+        )
+    except Exception:
+        # Lack of an active class/graph should not disable ordinary AI chat.
+        logger.info("ai_retrieval_skipped", exc_info=True)
+    try:
+        history = [_decode_message(item) for item in conversation["messages"]]
+        answer, skill_gap_summary = AIService().answer(history, question, retrieval["context"])
     except (AIProviderNotConfigured, AIProviderUnavailable) as exc:
         return _ai_error(exc)
+    if skill_gap_summary:
+        append_unresolved_skill_gap(skill_gap_summary)
     with LearningRepository() as repository:
-        repository.add_message(conversation_id, "assistant", answer)
+        repository.add_message(conversation_id, "assistant", _assistant_payload(answer, retrieval["sources"], retrieval["rag_status"]))
         updated = repository.get_conversation(conversation_id, username)
-    return Response({"conversation": updated, "answer": answer})
+    return Response({"conversation": _decode_conversation(updated), "answer": answer, "sources": retrieval["sources"], "weak_points": retrieval["weak_points"], "rag_status": retrieval["rag_status"]})
 
 
 @api_view(["POST"])

@@ -23,7 +23,7 @@ const routes = [
       { path: 'student/assignments/:id', name: 'student-assignment', component: () => import('@/views/student/StudentAssignmentView.vue'), meta: { roles: ['student'], featureId: 'student-assignments', title: '完成作业' } },
       { path: 'student/grades', name: 'student-grades', redirect: '/student/profile', meta: { roles: ['student'], featureId: 'student-profile', title: '个人中心' } },
       { path: 'student/knowledge', name: 'student-knowledge', component: () => import('@/views/student/StudentKnowledgeView.vue'), meta: { roles: ['student'], featureId: 'student-knowledge', title: '知识图谱' } },
-      { path: 'student/questions', name: 'student-questions', component: () => import('@/views/student/StudentQuestionsView.vue'), meta: { roles: ['student'], featureId: 'student-questions', title: '题目练习' } },
+      { path: 'student/questions', name: 'student-questions', component: () => import('@/views/student/StudentQuestionsView.vue'), meta: { roles: ['student'], featureId: 'student-questions', title: '课程资源' } },
       { path: 'student/mock', name: 'student-mock', component: () => import('@/views/student/StudentMockView.vue'), meta: { roles: ['student'], featureId: 'student-mock', title: '模拟练习' } },
       { path: 'student/ai', name: 'student-ai', component: () => import('@/views/student/StudentAiView.vue'), meta: { roles: ['student'], featureId: 'student-ai', title: 'AI 助教' } },
       { path: 'student/profile', name: 'student-profile', component: () => import('@/views/student/StudentProfileView.vue'), meta: { roles: ['student'], featureId: 'student-profile', title: '个人中心' } },

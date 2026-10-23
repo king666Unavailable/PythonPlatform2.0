@@ -10,7 +10,7 @@ NAVIGATION_FEATURES: dict[str, tuple[dict[str, str | int], ...]] = {
         {"id": "student-knowledge", "label": "知识图谱", "group": "学习中心", "icon": "knowledge", "path": "/student/knowledge", "sort_order": 30},
         {"id": "student-profile", "label": "个人中心", "group": "学习中心", "icon": "account", "path": "/student/profile", "sort_order": 40},
         {"id": "student-learning-profile", "label": "学情画像", "group": "学习中心", "icon": "grade", "path": "/student/learning-profile", "sort_order": 45},
-        {"id": "student-questions", "label": "题目练习", "group": "练习与答疑", "icon": "question", "path": "/student/questions", "sort_order": 50},
+        {"id": "student-questions", "label": "课程资源", "group": "练习与答疑", "icon": "question", "path": "/student/questions", "sort_order": 50},
         {"id": "student-mock", "label": "模拟练习", "group": "练习与答疑", "icon": "practice", "path": "/student/mock", "sort_order": 60},
         {"id": "student-ai", "label": "AI 助教", "group": "练习与答疑", "icon": "spark", "path": "/student/ai", "sort_order": 70},
     ),

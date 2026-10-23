@@ -787,6 +787,22 @@ class LearningRepository:
             for row in rows
         ]
 
+    def update_conversation_title(self, conversation_id: str, owner_username: str, title: str) -> dict[str, Any] | None:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE ai_conversations SET title=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s AND owner_username=%s",
+                (title, conversation_id, owner_username),
+            )
+            cursor.execute(
+                "SELECT id, title, status FROM ai_conversations WHERE id=%s AND owner_username=%s LIMIT 1",
+                (conversation_id, owner_username),
+            )
+            row = cursor.fetchone()
+        self.connection.commit()
+        if not row:
+            return None
+        return {"id": str(row["id"]), "title": row["title"], "status": row["status"]}
+
     def get_conversation(self, conversation_id: str, owner_username: str) -> dict[str, Any] | None:
         with self.connection.cursor() as cursor:
             cursor.execute(

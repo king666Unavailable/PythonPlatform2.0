@@ -457,11 +457,18 @@ export function fetchConversation(conversationId: string) {
   return request<{ conversation: Record<string, unknown> }>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}`)
 }
 
+export function renameConversation(conversationId: string, title: string) {
+  return request<{ conversation: { id: string; title: string } }>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title }),
+  })
+}
+
 export function sendConversationMessage(conversationId: string, content: string) {
-  return request<{ conversation: Record<string, unknown>; answer?: string }>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}`, {
+  return request<{ conversation: Record<string, unknown>; answer?: string; sources?: Array<{ question_id: string; question_title: string; point_title: string; difficulty: number | null; mastery?: number }> }>(`/api/v1/ai/conversations/${encodeURIComponent(conversationId)}`, {
     method: 'POST',
     body: JSON.stringify({ content }),
-  })
+  }, 45000, 'AI 回复等待超时，请稍后重试。')
 }
 
 export function generateQuestions(prompt: string) {
