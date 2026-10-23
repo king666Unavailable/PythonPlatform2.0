@@ -1051,16 +1051,20 @@ class LearningRepository:
                     if username and student_names.get(username):
                         detail.setdefault("student_name", student_names[username])
 
-            if teacher_student_scope and records:
-                usernames = list({str(record["actor_username"]) for record in records if record.get("actor_username")})
-                if usernames:
-                    placeholders = ", ".join(["%s"] * len(usernames))
-                    cursor.execute(
-                        f"SELECT username, name FROM user_students WHERE username IN ({placeholders})",
-                        tuple(usernames),
-                    )
-                    student_names = {str(row["username"]): row.get("name") or "" for row in cursor.fetchall()}
-                    for record in records:
+            student_actor_usernames = list({
+                str(record["actor_username"])
+                for record in records
+                if record.get("actor_role") == "student" and record.get("actor_username")
+            })
+            if student_actor_usernames:
+                placeholders = ", ".join(["%s"] * len(student_actor_usernames))
+                cursor.execute(
+                    f"SELECT username, name FROM user_students WHERE username IN ({placeholders})",
+                    tuple(student_actor_usernames),
+                )
+                student_names = {str(row["username"]): row.get("name") or "" for row in cursor.fetchall()}
+                for record in records:
+                    if record.get("actor_role") == "student":
                         record["actor_name"] = student_names.get(str(record.get("actor_username") or ""), "")
 
             # Older submission audit rows only stored assignment_id. Enrich their

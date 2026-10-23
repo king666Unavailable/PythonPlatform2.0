@@ -404,7 +404,7 @@ function describeLog(log: Record<string, unknown>) {
         <div class="audit-table-head"><span>时间</span><span>操作人</span><span>操作</span><span>对象</span><span>说明</span></div>
         <article v-for="log in logs" :key="String(log.id)" class="audit-table-row">
           <span>{{ formatDate(String(log.created_at || '')) }}</span>
-          <strong>{{ log.actor_username }}<small>{{ roleLabel(log.actor_role) }}</small></strong>
+          <strong>{{ log.actor_name || log.actor_username }}<small>{{ log.actor_name ? `${log.actor_username} · ${roleLabel(log.actor_role)}` : roleLabel(log.actor_role) }}</small></strong>
           <span class="audit-action-label">{{ actionLabel(log) }}</span>
           <span class="audit-object-label">{{ displayObject(log) }}</span>
           <span class="audit-detail">{{ describeLog(log) }}</span>

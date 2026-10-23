@@ -398,7 +398,7 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .question-result-item:hover, .question-result-item.selected { border-color: #a7c7ef; color: #1f5da9; background: var(--blue-soft); }
 .question-result-item strong { overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .question-result-item span { color: var(--muted); font-size: 14px; }
-.question-detail-card { min-height: 360px; }
+.question-detail-card { min-height: 650px; }
 .detail-title-row { align-items: flex-start; }
 .detail-title-row h3 { margin: 0; color: var(--ink); font-size: 22px; }
 .rich-text, .question-statement { white-space: pre-wrap; word-break: break-word; }
@@ -410,8 +410,19 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .four-columns { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .question-bank-body { display: grid; gap: 22px; }
 .question-bank-body > .create-editor-card { order: 1; }
-.question-bank-body > .question-list-card { order: 2; max-height: 720px; overflow: auto; scrollbar-color: #a9bfdc transparent; scrollbar-width: thin; }
-.question-bank-body > .edit-editor-card { order: 3; }
+.question-bank-body > .question-bank-filter-card { order: 2; }
+.question-bank-body > .question-list-card { order: 3; }
+.question-bank-body > .edit-editor-card { order: 4; }
+.question-bank-filter-card { display: grid; gap: 18px; }
+.question-bank-search { display: grid; grid-template-columns: minmax(220px, 1.5fr) minmax(160px, .8fr) minmax(200px, .9fr) auto; align-items: end; gap: 14px; }
+.question-bank-search label { display: grid; min-width: 0; gap: 7px; color: #35445a; font-size: 15px; font-weight: 700; }
+.question-bank-search input, .question-bank-search select { box-sizing: border-box; width: 100%; min-width: 0; }
+.question-bank-search button { white-space: nowrap; }
+.question-bank-browser-layout { padding: 0 24px 24px; align-items: start; }
+.question-bank-results { max-height: 650px; }
+.question-bank-detail-card .detail-title-row { align-items: flex-start; }
+.question-bank-detail-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.question-bank-detail-card .question-bank-usage { margin: 10px 0 0; }
 .creator-card, .editor-card, .ai-prompt-card { display: grid; gap: 18px; }
 .creator-card > label, .editor-card > label, .ai-prompt-card > label { display: grid; gap: 7px; color: #35445a; font-size: 14px; font-weight: 700; }
 .field-hint { color: var(--muted); font-size: 13px; font-weight: 500; }
@@ -440,8 +451,6 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
 .compact-search { display: flex; align-items: center; gap: 8px; }
 .compact-search input { min-width: 210px; }
 .compact-search button { flex: 0 0 auto; }
-.question-bank-search { min-width: min(100%, 680px); }
-.question-bank-search select { width: 150px; flex: 0 0 150px; }
 .knowledge-filter-details { position: relative; flex: 0 0 170px; }
 .knowledge-filter-details summary { min-height: 42px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; color: #35445a; background: white; cursor: pointer; font-size: 14px; list-style: none; }
 .knowledge-filter-details summary::-webkit-details-marker { display: none; }
@@ -1148,11 +1157,8 @@ input::placeholder, textarea::placeholder { color: #9aa7b8; }
   .filter-bar button, .mock-settings button { width: 100%; }
   .question-search-actions { align-items: stretch; }
   .question-search-actions button { flex: 1; }
-  .question-bank-search { width: 100%; min-width: 0; flex-wrap: wrap; }
-  .section-heading:has(.question-bank-search) { align-items: stretch; flex-direction: column; }
-  .question-bank-search { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .question-bank-search { grid-template-columns: 1fr; gap: 10px; }
   .question-bank-search input, .question-bank-search select, .question-bank-search button { width: 100%; min-width: 0; }
-  .question-bank-search select { flex: none; }
   .knowledge-point-picker-heading { align-items: stretch; flex-direction: column; }
   .knowledge-point-picker-heading input, .knowledge-filter-details { width: 100%; }
   .knowledge-point-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }

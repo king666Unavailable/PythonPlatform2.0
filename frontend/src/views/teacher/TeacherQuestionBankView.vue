@@ -36,6 +36,9 @@ interface ProgrammingConfig {
 }
 
 const questions = ref<QuestionSummary[]>([])
+const selectedQuestion = ref<QuestionSummary | null>(null)
+const selectedQuestionDetail = ref<Record<string, unknown> | null>(null)
+const questionDetailLoading = ref(false)
 const route = useRoute()
 const router = useRouter()
 const title = ref('')
@@ -68,9 +71,11 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const success = ref('')
+let questionDetailRequest = 0
 const isProgramming = computed(() => typeCode.value === '3' || typeCode.value === '4')
 const isFunctionMode = computed(() => executionMode.value === 'function' || executionMode.value === 'wrapped_body')
 const hasQuestionFilter = computed(() => Boolean(keyword.value.trim() || typeFilter.value || pointStatus.value || pointFilterTitles.value.length))
+const allQuestionsShown = ref(false)
 const filteredKnowledgePoints = computed(() => {
   const query = pointSearch.value.trim().toLowerCase()
   return knowledgePoints.value.filter((point) => !query || point.title.toLowerCase().includes(query))
@@ -156,11 +161,17 @@ function buildProgrammingConfig(): { config?: ProgrammingConfig; error?: string 
   }
   return { config }
 }
-async function load() {
+async function load(showAllWhenUnfiltered = false) {
   const filter = keyword.value.trim()
   error.value = ''
-  if (!hasQuestionFilter.value) {
+  if (hasQuestionFilter.value) allQuestionsShown.value = false
+  else if (showAllWhenUnfiltered) allQuestionsShown.value = true
+  if (!hasQuestionFilter.value && !allQuestionsShown.value) {
+    questionDetailRequest += 1
     questions.value = []
+    selectedQuestion.value = null
+    selectedQuestionDetail.value = null
+    questionDetailLoading.value = false
     loading.value = false
     return
   }
@@ -172,10 +183,35 @@ async function load() {
       ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => fetchQuestions(filter, typeFilter.value, '', index + 2, 100, pointStatus.value, pointFilterTitles.value)))
       : []
     questions.value = [firstPage, ...remainingPages].flatMap((page) => page.items)
+    if (selectedQuestion.value) {
+      const refreshedSelection = questions.value.find((question) => question.id === selectedQuestion.value?.id)
+      if (refreshedSelection) selectedQuestion.value = refreshedSelection
+      else {
+        questionDetailRequest += 1
+        selectedQuestion.value = null
+        selectedQuestionDetail.value = null
+        questionDetailLoading.value = false
+      }
+    }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '题库加载失败。'
   } finally {
     loading.value = false
+  }
+}
+async function selectQuestion(question: QuestionSummary) {
+  const requestId = ++questionDetailRequest
+  selectedQuestion.value = question
+  selectedQuestionDetail.value = null
+  questionDetailLoading.value = true
+  error.value = ''
+  try {
+    const detail = (await fetchQuestion(question.id)).question
+    if (requestId === questionDetailRequest) selectedQuestionDetail.value = detail
+  } catch (cause) {
+    if (requestId === questionDetailRequest) error.value = cause instanceof Error ? cause.message : '题目详情加载失败。'
+  } finally {
+    if (requestId === questionDetailRequest) questionDetailLoading.value = false
   }
 }
 function clearKnowledgeFilter() {
@@ -204,8 +240,13 @@ async function save() {
   // back to an objective type.
   payload.programming_config = built.config ?? null
   try {
-    if (editingId.value) { await updateQuestion(editingId.value, payload); success.value = '题目已更新。' } else { await createQuestion(payload); success.value = '题目已加入题库。' }
+    const savedId = editingId.value
+    if (savedId) { await updateQuestion(savedId, payload); success.value = '题目已更新。' } else { await createQuestion(payload); success.value = '题目已加入题库。' }
     closeEditor(); await load()
+    if (savedId) {
+      const savedQuestion = questions.value.find((question) => question.id === savedId)
+      if (savedQuestion) await selectQuestion(savedQuestion)
+    }
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '题目保存失败。' } finally { saving.value = false }
 }
 async function edit(question: QuestionSummary) {
@@ -239,7 +280,15 @@ async function edit(question: QuestionSummary) {
 }
 async function remove(question: QuestionSummary) {
   if (!window.confirm(`确定删除“${question.title}”吗？`)) return
-  try { await deleteQuestion(question.id); success.value = '题目已删除。'; await load() } catch (cause) { error.value = cause instanceof Error ? cause.message : '题目删除失败。' }
+  try {
+    await deleteQuestion(question.id)
+    if (selectedQuestion.value?.id === question.id) {
+      selectedQuestion.value = null
+      selectedQuestionDetail.value = null
+    }
+    success.value = '题目已删除。'
+    await load()
+  } catch (cause) { error.value = cause instanceof Error ? cause.message : '题目删除失败。' }
 }
 onMounted(() => { void loadKnowledgePoints() })
 </script>
@@ -253,7 +302,7 @@ onMounted(() => { void loadKnowledgePoints() })
       <div class="section-heading"><div><h3>{{ editingId ? '修改题目' : '新增题目' }}</h3><p>编程题可在这里配置测试用例；未配置测试用例的题目提交后会保持待配置状态。</p></div><button v-if="editingId" class="secondary-button" type="button" @click="closeEditor">取消修改</button></div>
       <div class="form-grid two-columns"><label>题目名称<input v-model="title" placeholder="例如：列表切片的结果是什么" /></label><label>题型<select v-model="typeCode"><option value="1">选择题</option><option value="2">填空题</option><option value="3">编程题</option><option value="4">程序填空题</option></select></label></div>
       <label>题干<textarea v-model="content" rows="5" placeholder="输入题目内容和必要的选项、输入输出说明" /></label>
-      <div class="form-grid two-columns"><label>参考答案<span class="field-hint">客观题必填，编程题可留空</span><textarea v-model="answer" rows="3" placeholder="客观题填写标准答案；编程题通过测试用例判定" /></label><label>题目解析<textarea v-model="analysis" rows="3" placeholder="填写答案解析、解题思路或评分说明" /></label></div>
+      <div class="form-grid two-columns"><label>参考答案（客观题必填，编程题可留空）<textarea v-model="answer" rows="3" placeholder="客观题填写标准答案；编程题通过测试用例判定" /></label><label>题目解析<textarea v-model="analysis" rows="3" placeholder="填写答案解析、解题思路或评分说明" /></label></div>
       <div class="knowledge-point-picker">
          <div class="knowledge-point-picker-heading"><div><strong>知识点</strong><span class="field-hint">已选 {{ selectedPointUids.length }} 个</span></div><input v-model="pointSearch" placeholder="搜索知识点名称" /></div>
          <div v-if="filteredKnowledgePoints.length" class="knowledge-point-options"><label v-for="point in filteredKnowledgePoints" :key="point.id" class="knowledge-point-option"><input v-model="selectedPointUids" type="checkbox" :value="point.id" /><span>{{ point.title }}</span></label></div>
@@ -261,14 +310,32 @@ onMounted(() => { void loadKnowledgePoints() })
       </div>
       <div v-if="isProgramming" class="test-case-editor">
         <div class="section-heading"><div><h4>编程题判题配置</h4><p>代码提交后由 Piston 逐个执行测试用例，按权重计算题目得分。</p></div><button class="secondary-button" type="button" @click="addTestCase">新增测试用例</button></div>
-        <div class="form-grid four-columns"><label>语言<input v-model="language" /></label><label>版本<input v-model="version" placeholder="latest" /></label><label>文件名<span class="field-hint">标准输入/输出模式使用</span><input v-model="filename" placeholder="main.py" /></label><label>超时（毫秒）<input v-model.number="timeoutMs" type="number" min="500" step="100" /></label><label>执行模式<select v-model="executionMode"><option value="stdio">标准输入/输出（完整程序）</option><option value="function">函数调用（学生实现完整函数）</option><option value="wrapped_body">代码片段自动包装</option></select><span class="field-hint">学生提交代码的入口形式</span></label><label v-if="executionMode === 'stdio'">输出比较<select v-model="comparisonMode"><option value="trim_trailing_spaces">忽略行尾空格和末尾换行</option><option value="ignore_final_newline">忽略末尾换行</option><option value="exact">完全一致</option></select></label></div>
+        <div class="form-grid four-columns"><label>语言<input v-model="language" /></label><label>版本<input v-model="version" placeholder="latest" /></label><label>测试脚本文件名<input v-model="filename" placeholder="main.py" /></label><label>超时（毫秒）<input v-model.number="timeoutMs" type="number" min="500" step="100" /></label><label>执行模式<select v-model="executionMode"><option value="stdio">标准输入/输出（完整程序）</option><option value="function">函数调用（学生实现完整函数）</option><option value="wrapped_body">代码片段自动包装</option></select></label><label v-if="executionMode === 'stdio'">输出比较<select v-model="comparisonMode"><option value="trim_trailing_spaces">忽略行尾空格和末尾换行</option><option value="ignore_final_newline">忽略末尾换行</option><option value="exact">完全一致</option></select></label></div>
         <div v-if="isFunctionMode" class="form-grid four-columns"><label>函数名<span class="field-hint">判卷器调用的固定入口</span><input v-model="functionName" placeholder="例如：square_sum" /></label><label v-if="executionMode === 'wrapped_body'">包装函数参数<span class="field-hint">多个参数用逗号分隔</span><input v-model="parameterNames" placeholder="例如：numbers" /></label><label v-if="executionMode === 'wrapped_body'">返回变量<span class="field-hint">学生代码中赋值的结果变量</span><input v-model="returnVariable" placeholder="例如：answer" /></label><label>返回值类型<select v-model="returnType"><option value="json">JSON（列表/字典/嵌套结构）</option><option value="number">数字（支持浮点误差）</option><option value="text">文本（完全一致）</option></select></label><label v-if="returnType === 'number'">浮点误差<input v-model.number="tolerance" type="number" min="0" step="0.000001" /></label></div>
         <div v-if="testCases.length" class="test-case-list"><article v-for="(testCase, index) in testCases" :key="testCase.case_no" class="test-case-row"><div class="test-case-row-header"><strong>测试用例 {{ index + 1 }}</strong><button class="small-button danger-button" type="button" @click="removeTestCase(index)">删除</button></div><div v-if="executionMode === 'stdio'" class="test-case-fields"><label>标准输入<textarea v-model="testCase.stdin" rows="3" placeholder="传给程序的输入，可留空" /></label><label>期望输出<textarea v-model="testCase.expected_output" rows="3" placeholder="程序应输出的内容" /></label><label>权重<input v-model.number="testCase.weight" type="number" min="0.01" step="0.1" /></label></div><div v-else class="test-case-fields"><label>调用参数（JSON 列表）<textarea v-model="testCase.args_text" rows="2" placeholder='例如：[1, 2, 3] 或 [[1, 2, 3]]' /></label><label>关键字参数（JSON 对象）<textarea v-model="testCase.kwargs_text" rows="2" placeholder='例如：{"base": 10}' /></label><label>期望返回值（JSON）<textarea v-model="testCase.expected_value_text" rows="2" placeholder="例如：14 或 [1, 2, 3]" /></label><label>权重<input v-model.number="testCase.weight" type="number" min="0.01" step="0.1" /></label></div><label class="checkbox-field"><input v-model="testCase.is_hidden" type="checkbox" />隐藏测试用例</label></article></div>
         <div v-else class="empty-inline">暂未配置测试用例，保存后该题会标记为 pending_test_cases，不会被判为 0 分。</div>
       </div>
       <button type="button" :disabled="saving" @click="save">{{ saving ? '保存中…' : editingId ? '保存修改' : '保存题目' }}</button>
     </section>
-    <section class="content-card flush-card question-list-card"><div class="section-heading padded-heading"><div><h3>题目列表</h3><p>{{ hasQuestionFilter ? `找到 ${questions.length} 道匹配题目。` : '请输入筛选条件后查看题目。' }}</p></div><form class="compact-search question-bank-search" @submit.prevent="load"><input v-model="keyword" placeholder="搜索题目名称、题干或知识点" /><select v-model="typeFilter" aria-label="题型筛选"><option value="">全部题型</option><option value="1">选择题</option><option value="2">填空题</option><option value="3">编程题</option><option value="4">程序填空题</option></select><select v-model="pointStatus" aria-label="知识点关联状态"><option value="">全部关联状态</option><option value="linked">已关联知识点</option><option value="unlinked">未关联知识点</option></select><button class="secondary-button" type="submit">搜索</button></form></div><div v-if="pointFilterTitles.length" class="question-bank-point-filter"><span>知识点筛选：{{ pointFilterTitles.join('、') }}</span><button class="small-button secondary-button" type="button" @click="clearKnowledgeFilter">清除</button></div><div v-if="loading" class="loading-state">正在加载题库…</div><EmptyState v-else-if="!hasQuestionFilter" title="请输入筛选条件" description="输入题目名称、题干或选择题型后，搜索符合条件的全部题目。" /><div v-else-if="questions.length" class="question-table"><div class="question-table-head"><span>题目</span><span>题型</span><span>难度</span><span>知识点</span><span>操作</span></div><article v-for="question in questions" :key="question.id" class="question-table-row"><div><strong>{{ question.title }}</strong><small>{{ question.question_count }} 次练习 · 正确率 {{ question.rate ?? 0 }}%</small></div><StatusBadge :label="question.type" tone="blue" /><span>{{ question.difficulty ?? '—' }}</span><span class="muted">{{ question.point_titles.join('、') || '未关联' }}</span><div class="question-actions"><button class="small-button secondary-button" type="button" @click="edit(question)">修改</button><button class="small-button danger-button" type="button" @click="remove(question)">删除</button></div></article></div><EmptyState v-else title="没有匹配题目" description="请更换题目名称、题干、知识点或题型。" /></section>
+    <section class="content-card question-bank-filter-card">
+      <form class="question-bank-search" @submit.prevent="load(true)">
+        <label>搜索题目<input v-model="keyword" placeholder="搜索题目名称、题干或知识点" /></label>
+        <label>题型<select v-model="typeFilter"><option value="">全部题型</option><option value="1">选择题</option><option value="2">填空题</option><option value="3">编程题</option><option value="4">程序填空题</option></select></label>
+        <label>知识点关联状态<select v-model="pointStatus"><option value="">全部关联状态</option><option value="linked">已关联知识点</option><option value="unlinked">未关联知识点</option></select></label>
+        <button class="secondary-button" type="submit">搜索</button>
+      </form>
+      <div v-if="pointFilterTitles.length" class="question-bank-point-filter"><span>知识点筛选：{{ pointFilterTitles.join('、') }}</span><button class="small-button secondary-button" type="button" @click="clearKnowledgeFilter">清除</button></div>
+    </section>
+    <section class="content-card flush-card question-list-card">
+      <div class="section-heading padded-heading"><div><h3>题目结果</h3><p>{{ hasQuestionFilter || allQuestionsShown ? `找到 ${questions.length} 道匹配题目。` : '请输入筛选条件后点击搜索，或直接搜索查看全部题目。' }}</p></div></div>
+      <div v-if="loading" class="loading-state">正在加载题库…</div>
+      <EmptyState v-else-if="!hasQuestionFilter && !allQuestionsShown" title="请输入筛选条件或直接搜索" description="点击搜索按钮可以查看全部题目。" />
+      <div v-else-if="questions.length" class="question-browser-layout question-bank-browser-layout">
+        <div class="question-results question-bank-results"><div class="panel-heading-row"><strong>题目列表</strong><span>{{ questions.length }} 道题</span></div><button v-for="question in questions" :key="question.id" type="button" class="question-result-item" :class="{ selected: selectedQuestion?.id === question.id }" @click="selectQuestion(question)"><strong>{{ question.title }}</strong><span>{{ question.type }} · 难度 {{ question.difficulty ?? '未设置' }}</span></button></div>
+        <article class="question-detail-card question-bank-detail-card"><p v-if="questionDetailLoading" class="loading-state">正在加载题目…</p><EmptyState v-else-if="!selectedQuestion" title="选择一道题" description="题目内容会显示在这里。" /><template v-else><div class="detail-title-row"><h3>{{ selectedQuestion.title }}</h3><div class="question-bank-detail-actions"><StatusBadge :label="selectedQuestion.type" tone="blue" /><button class="small-button secondary-button" type="button" @click="edit(selectedQuestion)">修改</button><button class="small-button danger-button" type="button" @click="remove(selectedQuestion)">删除</button></div></div><p class="muted">难度：{{ selectedQuestion.difficulty ?? '未设置' }} · 知识点：{{ selectedQuestion.point_titles.join('、') || '未关联' }}</p><p class="muted question-bank-usage">练习 {{ selectedQuestion.question_count }} 次 · 正确率 {{ selectedQuestion.rate ?? 0 }}%</p><div class="rich-text">{{ String(selectedQuestionDetail?.content ?? '暂无题干') }}</div></template></article>
+      </div>
+      <EmptyState v-else title="没有匹配题目" description="请更换题目名称、题干、知识点或题型。" />
+    </section>
     </div>
   </div>
 </template>
